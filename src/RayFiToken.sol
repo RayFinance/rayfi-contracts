@@ -42,9 +42,9 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private s_sellRayFundFee;
     uint256 private s_internalTransactionStatus;
 
-    //////////////
-    /// EVENTS ///
-    //////////////
+    ////////////////
+    /// Events    //
+    ////////////////
 
     /**
      * @notice Emitted when RayFi is staked
@@ -99,28 +99,10 @@ contract RayFiToken is ERC20, Ownable {
     //////////////////
 
     /**
-     * @dev Indicates a failure in setting a new dividend token
-     * @param dividendToken The address of the new dividend token
+     * @dev Triggered when attempting to set the zero address as a contract parameter
+     * Setting a contract parameter to the zero address can lead to unexpected behavior
      */
-    error RayFi__InvalidDividendToken(address dividendToken);
-
-    /**
-     * @dev Indicates a failure in setting a new dividend tracker
-     * @param dividendTracker The address of the new dividend tracker
-     */
-    error RayFi__InvalidDividendTracker(address dividendTracker);
-
-    /**
-     * @dev Indicates a failure in setting a new treasury receiver
-     * @param treasuryReceiver The address of the new treasury receiver
-     */
-    error RayFi__InvalidTreasuryReceiver(address treasuryReceiver);
-
-    /**
-     * @dev Indicates a failure in setting a new RAY fund receiver
-     * @param rayFundReceiver The address of the new RAY fund receiver
-     */
-    error RayFi__InvalidRayFundReceiver(address rayFundReceiver);
+    error RayFi__CannotSetToZeroAddress();
 
     /**
      * @dev Indicates a failure in setting new fees,
@@ -162,17 +144,11 @@ contract RayFiToken is ERC20, Ownable {
         address rayFundReceiver,
         uint256 minSwapFees
     ) ERC20("RayFi", "RAYFI") Ownable(msg.sender) {
-        if (dividendToken == address(0)) {
-            revert RayFi__InvalidDividendToken(dividendToken);
-        }
-        if (dividendTracker == address(0)) {
-            revert RayFi__InvalidDividendTracker(dividendTracker);
-        }
-        if (treasuryReceiver == address(0)) {
-            revert RayFi__InvalidTreasuryReceiver(treasuryReceiver);
-        }
-        if (rayFundReceiver == address(0)) {
-            revert RayFi__InvalidRayFundReceiver(rayFundReceiver);
+        if (
+            dividendToken == address(0) || dividendTracker == address(0) || treasuryReceiver == address(0)
+                || rayFundReceiver == address(0)
+        ) {
+            revert RayFi__CannotSetToZeroAddress();
         }
 
         s_dividendToken = dividendToken;
@@ -292,10 +268,13 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice Updates the Dividend Tracker to a new address, excluding it and this contract from dividends
-     * @param newAddress The new address for the Dividend Tracker
+     * @param dividendTracker The new address for the Dividend Tracker
      */
-    function setDividendTracker(address newAddress) external onlyOwner {
-        s_dividendTracker = IRayFiDividendTracker(newAddress);
+    function setDividendTracker(address dividendTracker) external onlyOwner {
+        if (dividendTracker == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
+        }
+        s_dividendTracker = IRayFiDividendTracker(dividendTracker);
         s_dividendTracker.excludeFromDividends(address(s_dividendTracker));
         s_dividendTracker.excludeFromDividends(address(this));
     }
