@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IterableMapping} from "./IterableMapping.sol";
 import {IRayFiToken} from "./IRayFiToken.sol";
 
 /**
@@ -13,6 +14,12 @@ import {IRayFiToken} from "./IRayFiToken.sol";
  * @notice The primary purpose of this token is acquiring (or selling) shares of the Ray Finance protocol.
  */
 contract RayFiToken is ERC20, Ownable, IRayFiToken {
+    //////////////
+    // Types    //
+    //////////////
+
+    using IterableMapping for IterableMapping.Map;
+
     /////////////////////
     // State Variables //
     /////////////////////
@@ -22,14 +29,18 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     uint256 private constant INTERNAL_TRANSACTION_OFF = 1;
     uint256 private constant INTERNAL_TRANSACTION_ON = 2;
 
+    IterableMapping.Map private s_shareholders;
+
     address private s_dividendTracker;
 
     mapping(address user => bool isExemptFromFees) private s_isFeeExempt;
+    mapping(address user => bool isExcludedFromDividends) private s_isExcludedFromDividends;
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
 
     uint256 private s_totalStakedAmount;
     uint256 private s_minSwapFees;
+    uint256 private s_minimumTokenBalanceForDividends;
     uint256 private s_buyLiquidityFee;
     uint256 private s_buyTreasuryFee;
     uint256 private s_buyRayFundFee;
@@ -190,7 +201,7 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
      * @param value The amount of RayFi tokens to compound
      */
     function compound(address user, uint256 value) external {
-        if (msg.sender != address(s_dividendTracker)) {
+        if (msg.sender != s_dividendTracker) {
             revert RayFi__InvalidCompoundCaller(msg.sender);
         }
         _update(msg.sender, address(this), value);
@@ -269,6 +280,17 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     /////////////////////////////////////////
 
     /**
+     * @notice Get the shareholders of the RayFi protocol
+     * @dev This function is used by the Dividend Tracker to distribute dividends
+     * It is a known limitation that this function will revert if the shareholder array becomes too large
+     * This limitation only applies when the function is called by a contract, since it will be free otherwise
+     * @return The list of shareholders
+     */
+    function getShareholders() external view returns (address[] memory) {
+        return s_shareholders.keys();
+    }
+
+    /**
      * @notice Get the staked balance of a specific user
      * @param user The user to check
      * @return The staked balance of the user
@@ -290,7 +312,7 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
      * @return The address of the Dividend Tracker
      */
     function getDividendTracker() external view returns (address) {
-        return address(s_dividendTracker);
+        return s_dividendTracker;
     }
 
     /**
@@ -366,7 +388,7 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
                 if (totalBuyFees > 0) {
                     uint256 fee = (value * totalBuyFees) / 100;
                     value -= fee;
-                    super._update(from, address(s_dividendTracker), fee);
+                    super._update(from, s_dividendTracker, fee);
                 }
             }
             // Sell order
@@ -375,10 +397,10 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
                 if (totalSellFees > 0) {
                     uint256 fee = (value * totalSellFees) / 100;
                     value -= fee;
-                    super._update(from, address(s_dividendTracker), fee);
+                    super._update(from, s_dividendTracker, fee);
                 }
 
-                if (balanceOf(address(s_dividendTracker)) >= s_minSwapFees) {
+                if (balanceOf(s_dividendTracker) >= s_minSwapFees) {
                     s_internalTransactionStatus = INTERNAL_TRANSACTION_ON;
                     (bool success,) = s_dividendTracker.call(abi.encodeWithSignature("swapFees()"));
                     if (!success) {
@@ -390,6 +412,22 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
         }
 
         super._update(from, to, value);
+
+        _updateShareholder(from, balanceOf(from));
+        _updateShareholder(to, balanceOf(to));
+    }
+
+    /**
+     * @dev Updates the shareholder list based on the new balance
+     * @param shareholder The address of the shareholder
+     * @param balance The balance of the shareholder
+     */
+    function _updateShareholder(address shareholder, uint256 balance) private {
+        if (balance >= s_minimumTokenBalanceForDividends && !s_isExcludedFromDividends[shareholder]) {
+            s_shareholders.set(shareholder, balance);
+        } else {
+            s_shareholders.remove(shareholder);
+        }
     }
 
     /**
