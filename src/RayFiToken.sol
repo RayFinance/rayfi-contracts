@@ -275,8 +275,6 @@ contract RayFiToken is ERC20, Ownable {
             revert RayFi__CannotSetToZeroAddress();
         }
         s_dividendTracker = IRayFiDividendTracker(dividendTracker);
-        s_dividendTracker.excludeFromDividends(address(s_dividendTracker));
-        s_dividendTracker.excludeFromDividends(address(this));
     }
 
     /////////////////////////////////////////
@@ -390,14 +388,13 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to transfer
      */
     function _update(address from, address to, uint256 value) internal override {
-        uint256 fee;
-
         if (s_internalTransactionStatus != INTERNAL_TRANSACTION_ON) {
             // Buy order
             if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
                 uint256 totalBuyFees = getTotalBuyFees();
                 if (totalBuyFees > 0) {
-                    fee = (value * totalBuyFees) / 100;
+                    uint256 fee = (value * totalBuyFees) / 100;
+                    value -= fee;
                     super._update(from, address(s_dividendTracker), fee);
                 }
             }
@@ -405,7 +402,8 @@ contract RayFiToken is ERC20, Ownable {
             else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
                 uint256 totalSellFees = getTotalSellFees();
                 if (totalSellFees > 0) {
-                    fee = (value * totalSellFees) / 100;
+                    uint256 fee = (value * totalSellFees) / 100;
+                    value -= fee;
                     super._update(from, address(s_dividendTracker), fee);
                 }
 
@@ -417,8 +415,7 @@ contract RayFiToken is ERC20, Ownable {
             }
         }
 
-        uint256 amountReceived = value - fee;
-        super._update(from, to, amountReceived);
+        super._update(from, to, value);
 
         try s_dividendTracker.setBalance(from, balanceOf(from)) {} catch {}
         try s_dividendTracker.setBalance(to, balanceOf(to)) {} catch {}
