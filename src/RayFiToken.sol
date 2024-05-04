@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IRayFiDividendTracker} from "./IRayFiDividendTracker.sol";
+import {IRayFiToken} from "./IRayFiToken.sol";
 
 /**
  * @title RayFiToken
@@ -12,7 +12,7 @@ import {IRayFiDividendTracker} from "./IRayFiDividendTracker.sol";
  * @notice This contract is the underlying token of the Ray Finance ecosystem.
  * @notice The primary purpose of this token is acquiring (or selling) shares of the Ray Finance protocol.
  */
-contract RayFiToken is ERC20, Ownable {
+contract RayFiToken is ERC20, Ownable, IRayFiToken {
     /////////////////////
     // State Variables //
     /////////////////////
@@ -22,11 +22,7 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private constant INTERNAL_TRANSACTION_OFF = 1;
     uint256 private constant INTERNAL_TRANSACTION_ON = 2;
 
-    IRayFiDividendTracker private s_dividendTracker;
-
-    address private s_treasuryReceiver;
-    address private s_rayFundReceiver;
-    address private s_dividendToken;
+    address private s_dividendTracker;
 
     mapping(address user => bool isExemptFromFees) private s_isFeeExempt;
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
@@ -126,35 +122,26 @@ contract RayFiToken is ERC20, Ownable {
      */
     error RayFi__InvalidCompoundCaller(address caller);
 
+    /**
+     * @dev Indicates a failure in swapping fees,
+     * due to the call to the Dividend Tracker failing
+     */
+    error RayFi__FailedToSwapFees();
+
     ////////////////////
     // Constructor    //
     ////////////////////
 
     /**
-     * @param dividendToken The address of the token used for dividends
      * @param dividendTracker The address of the contract that will track dividends
-     * @param treasuryReceiver The address that will receive the treasury fees
-     * @param rayFundReceiver The address that will receive the RAY fund fees
      * @param minSwapFees The minimum amount of fees required to swap to stablecoin
      */
-    constructor(
-        address dividendToken,
-        address dividendTracker,
-        address treasuryReceiver,
-        address rayFundReceiver,
-        uint256 minSwapFees
-    ) ERC20("RayFi", "RAYFI") Ownable(msg.sender) {
-        if (
-            dividendToken == address(0) || dividendTracker == address(0) || treasuryReceiver == address(0)
-                || rayFundReceiver == address(0)
-        ) {
+    constructor(address dividendTracker, uint256 minSwapFees) ERC20("RayFi", "RAYFI") Ownable(msg.sender) {
+        if (dividendTracker == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
 
-        s_dividendToken = dividendToken;
-        s_dividendTracker = IRayFiDividendTracker(dividendTracker);
-        s_treasuryReceiver = treasuryReceiver;
-        s_rayFundReceiver = rayFundReceiver;
+        s_dividendTracker = dividendTracker;
 
         s_minSwapFees = minSwapFees * (10 ** decimals());
         s_isFeeExempt[dividendTracker] = true;
@@ -274,7 +261,7 @@ contract RayFiToken is ERC20, Ownable {
         if (dividendTracker == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
-        s_dividendTracker = IRayFiDividendTracker(dividendTracker);
+        s_dividendTracker = dividendTracker;
     }
 
     /////////////////////////////////////////
@@ -296,22 +283,6 @@ contract RayFiToken is ERC20, Ownable {
      */
     function getTotalStakedAmount() external view returns (uint256) {
         return s_totalStakedAmount;
-    }
-
-    /**
-     * @notice Get the treasury receiver
-     * @return The address of the treasury receiver
-     */
-    function getTreasuryReceiver() external view returns (address) {
-        return s_treasuryReceiver;
-    }
-
-    /**
-     * @notice Get the RAY fund receiver
-     * @return The address of the RAY fund receiver
-     */
-    function getRayFundReceiver() external view returns (address) {
-        return s_rayFundReceiver;
     }
 
     /**
@@ -409,16 +380,16 @@ contract RayFiToken is ERC20, Ownable {
 
                 if (balanceOf(address(s_dividendTracker)) >= s_minSwapFees) {
                     s_internalTransactionStatus = INTERNAL_TRANSACTION_ON;
-                    s_dividendTracker.swapFees();
+                    (bool success,) = s_dividendTracker.call(abi.encodeWithSignature("swapFees()"));
+                    if (!success) {
+                        revert RayFi__FailedToSwapFees();
+                    }
                     s_internalTransactionStatus = INTERNAL_TRANSACTION_OFF;
                 }
             }
         }
 
         super._update(from, to, value);
-
-        try s_dividendTracker.setBalance(from, balanceOf(from)) {} catch {}
-        try s_dividendTracker.setBalance(to, balanceOf(to)) {} catch {}
     }
 
     /**
