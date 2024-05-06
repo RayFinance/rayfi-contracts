@@ -39,28 +39,52 @@ pragma solidity ^0.8.20;
 library RayFiLibrary {
     struct ShareholderSet {
         // Storage of shareholder addresses
-        address[] _shareholders;
-        // Position is the index of the value in the `_shareholders` array plus 1.
+        address[] s_shareholders;
+        // Position is the index of the value in the `s_shareholders` array plus 1.
         // Position 0 is used to mean a value is not in the set.
-        mapping(address shareholder => uint256 position) _positionOf;
+        mapping(address shareholder => uint256 position) s_positionOf;
         // Amount of shares a given shareholder owns
-        mapping(address shareholder => uint256 shares) _sharesOf;
+        mapping(address shareholder => uint256 shares) s_sharesOf;
+        // Amount of shares a given shareholder has staked
+        mapping(address shareholder => uint256 stakedShares) s_stakedSharesOf;
+        // Amount of dividends a given shareholder has withdrawn
+        mapping(address shareholder => uint256 withdrawnDividends) s_withdrawnDividendsOf;
+        // Amount of RayFi a given shareholder has reinvested
+        mapping(address shareholder => uint256 reinvestedRayFi) s_reinvestedRayFiOf;
     }
 
     /**
      * @dev Add a value to a set. O(1).
-     *
-     * Returns true if the value was added to the set, that is if it was not
-     * already present.
      */
     function add(ShareholderSet storage set, address value, uint256 shares) internal {
         if (!contains(set, value)) {
-            set._shareholders.push(value);
+            set.s_shareholders.push(value);
             // The value is stored at length-1, but we add 1 to all indexes
             // and use 0 as a sentinel value
-            set._positionOf[value] = set._shareholders.length;
+            set.s_positionOf[value] = set.s_shareholders.length;
         }
-        set._sharesOf[value] = shares;
+        set.s_sharesOf[value] = shares;
+    }
+
+    /**
+     * @dev Set the amount of staked shares for a shareholder in the set. O(1).
+     */
+    function addStakedShares(ShareholderSet storage set, address value, uint256 stakedShares) internal {
+        set.s_stakedSharesOf[value] = stakedShares;
+    }
+
+    /**
+     * @dev Set the amount of dividends withdrawn for a shareholder in the set. O(1).
+     */
+    function addWithdrawnDividends(ShareholderSet storage set, address value, uint256 withdrawnDividends) internal {
+        set.s_withdrawnDividendsOf[value] = withdrawnDividends;
+    }
+
+    /**
+     * @dev Set the amount of RayFi reinvested for a shareholder in the set. O(1).
+     */
+    function addReinvestedRayFi(ShareholderSet storage set, address value, uint256 reinvestedRayFi) internal {
+        set.s_reinvestedRayFiOf[value] = reinvestedRayFi;
     }
 
     /**
@@ -68,33 +92,35 @@ library RayFiLibrary {
      */
     function remove(ShareholderSet storage set, address value) internal {
         // We cache the value's position to prevent multiple reads from the same storage slot
-        uint256 position = set._positionOf[value];
+        uint256 position = set.s_positionOf[value];
 
         if (position != 0) {
             // Equivalent to contains(set, value)
-            // To delete an element from the _shareholders array in O(1), we swap the element to delete
+            // To delete an element from the s_shareholders array in O(1), we swap the element to delete
             // with the last one in the array, and then remove the last element (sometimes called as 'swap and pop').
             // This modifies the order of the array, as noted in {at}.
 
             uint256 valueIndex = position - 1;
-            uint256 lastIndex = set._shareholders.length - 1;
+            uint256 lastIndex = set.s_shareholders.length - 1;
 
             if (valueIndex != lastIndex) {
-                address lastValue = set._shareholders[lastIndex];
+                address lastValue = set.s_shareholders[lastIndex];
 
                 // Move the lastValue to the index where the value to delete is
-                set._shareholders[valueIndex] = lastValue;
+                set.s_shareholders[valueIndex] = lastValue;
                 // Update the tracked position of the lastValue (that was just moved)
-                set._positionOf[lastValue] = position;
+                set.s_positionOf[lastValue] = position;
             }
 
             // Delete the slot where the moved value was stored
-            set._shareholders.pop();
+            set.s_shareholders.pop();
 
             // Delete the tracked index for the deleted slot
-            delete set._positionOf[value];
+            delete set.s_positionOf[value];
             // Delete the share data for the deleted slot
-            delete set._sharesOf[value];
+            delete set.s_sharesOf[value];
+            // Delete the staked share data for the deleted slot
+            delete set.s_stakedSharesOf[value];
         }
     }
 
@@ -102,14 +128,14 @@ library RayFiLibrary {
      * @dev Returns true if the value is in the set. O(1).
      */
     function contains(ShareholderSet storage set, address value) internal view returns (bool) {
-        return set._positionOf[value] != 0;
+        return set.s_positionOf[value] != 0;
     }
 
     /**
      * @dev Returns the number of values on the set. O(1).
      */
     function length(ShareholderSet storage set) internal view returns (uint256) {
-        return set._shareholders.length;
+        return set.s_shareholders.length;
     }
 
     /**
@@ -123,14 +149,35 @@ library RayFiLibrary {
      * - `index` must be strictly less than {length}.
      */
     function shareholderAt(ShareholderSet storage set, uint256 index) internal view returns (address) {
-        return set._shareholders[index];
+        return set.s_shareholders[index];
     }
 
     /**
      * @dev Returns the amount of shares for a shareholder in the set. O(1).
      */
     function sharesOf(ShareholderSet storage set, address shareholder) internal view returns (uint256) {
-        return set._sharesOf[shareholder];
+        return set.s_sharesOf[shareholder];
+    }
+
+    /**
+     * @dev Returns the amount of staked shares for a shareholder in the set. O(1).
+     */
+    function stakedSharesOf(ShareholderSet storage set, address shareholder) internal view returns (uint256) {
+        return set.s_stakedSharesOf[shareholder];
+    }
+
+    /**
+     * @dev Returns the amount of dividends withdrawn for a shareholder in the set. O(1).
+     */
+    function withdrawnDividendsOf(ShareholderSet storage set, address shareholder) internal view returns (uint256) {
+        return set.s_withdrawnDividendsOf[shareholder];
+    }
+
+    /**
+     * @dev Returns the amount of RayFi reinvested for a shareholder in the set. O(1).
+     */
+    function reinvestedRayFiOf(ShareholderSet storage set, address shareholder) internal view returns (uint256) {
+        return set.s_reinvestedRayFiOf[shareholder];
     }
 
     /**
@@ -142,6 +189,6 @@ library RayFiLibrary {
      * uncallable if the set grows to a point where copying to memory consumes too much gas to fit in a block.
      */
     function shareholders(ShareholderSet storage set) internal view returns (address[] memory) {
-        return set._shareholders;
+        return set.s_shareholders;
     }
 }
