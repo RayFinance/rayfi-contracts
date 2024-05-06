@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IterableMapping} from "./IterableMapping.sol";
+import {RayFiLibrary} from "./RayFiLibrary.sol";
 
 /**
  * @title RayFiToken
@@ -17,7 +17,7 @@ contract RayFiToken is ERC20, Ownable {
     // Types    //
     //////////////
 
-    using IterableMapping for IterableMapping.Map;
+    using RayFiLibrary for RayFiLibrary.ShareholderSet;
 
     /////////////////////
     // State Variables //
@@ -28,10 +28,10 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private constant MAGNITUDE = 2 ** 128;
 
     uint256 private s_totalStakedAmount;
+    uint256 private s_totalSharesAmount;
     uint256 private s_minimumTokenBalanceForDividends;
     uint256 private s_magnifiedRayFiPerShare;
     uint256 private s_magnifiedDividendPerShare;
-    uint256 private s_lastDistribution;
     uint256 private s_lastProcessedIndex;
     uint256 private s_totalDividendsDistributed;
 
@@ -47,8 +47,9 @@ contract RayFiToken is ERC20, Ownable {
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
     mapping(address => uint256) private s_withdrawnDividends;
+    mapping(address => uint256) private s_reinvestedRayFi;
 
-    IterableMapping.Map private s_shareholders;
+    RayFiLibrary.ShareholderSet private s_shareholders;
 
     ////////////////
     /// Events    //
@@ -114,13 +115,10 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice Emitted when dividends are distributed
-     * @param dividendPerShare The dividend amount per share
+     * @param lastDistribution The amount of dividends that were distributed in the last distribution
      * @param totalDividendsDistributed The total dividends that have been distributed
-     * @param lastDistribution Distribution offset to avoid double counting
      */
-    event DividendsDistributed(
-        uint256 indexed dividendPerShare, uint256 indexed totalDividendsDistributed, uint256 indexed lastDistribution
-    );
+    event DividendsDistributed(uint256 indexed lastDistribution, uint256 indexed totalDividendsDistributed);
 
     /**
      * @notice Emitted when dividends are withdrawn
@@ -132,13 +130,9 @@ contract RayFiToken is ERC20, Ownable {
     /**
      * @notice Emitted when dividends are reinvested
      * @param user The user that reinvested the dividends
-     * @param amount The amount of dividends that were reinvested
-     * @param lastDistribution Distribution offset to avoid double counting
-     * @param manual A flag indicating whether the reinvestment was manual
+     * @param amount The amount of RayFi that was compounded
      */
-    event DividendsReinvested(
-        address indexed user, uint256 indexed amount, uint256 indexed lastDistribution, bool manual
-    );
+    event DividendsReinvested(address indexed user, uint256 indexed amount);
 
     //////////////////
     // Errors       //
@@ -151,19 +145,24 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__CannotSetToZeroAddress();
 
     /**
-     * @dev Indicates a failure in setting new fees,
-     * due to the total fees being too high
+     * @dev Indicates a failure in setting new fees due to the total fees being too high
      * @param totalFees The total fees that were attempted to be set
      */
     error RayFi__FeesTooHigh(uint256 totalFees);
 
     /**
-     * @dev Indicates a failure in unstaking tokens,
-     * due to the sender not having enough staked tokens
+     * @dev Indicates a failure in unstaking tokens due to the sender not having enough staked tokens
      * @param stakedAmount The amount of staked tokens the sender has
      * @param unstakeAmount The amount of tokens the sender is trying to unstake
      */
     error RayFi__InsufficientStakedBalance(uint256 stakedAmount, uint256 unstakeAmount);
+
+    /**
+     * @dev Triggered when trying to process dividends, but not enough gas was sent with the transaction
+     * @param gasRequested The amount of gas requested
+     * @param gasProvided The amount of gas provided
+     */
+    error RayFi__InsufficientGas(uint256 gasRequested, uint256 gasProvided);
 
     /**
      * @dev Triggered when trying to process dividends, but there are no shareholders
@@ -171,14 +170,9 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__ZeroShareholders();
 
     /**
-     * @dev Triggered when trying to process dividends, but not enough gas was sent with the transaction
+     * @dev Triggered when trying to distribute dividends, but there are no dividends to distribute
      */
-    error RayFi__InsufficientGas();
-
-    /**
-     * @dev Triggered when trying to reinvest dividends, but there are no dividends to reinvest
-     */
-    error RayFi__NothingToReinvest();
+    error RayFi__NothingToDistribute();
 
     /**
      * @dev Triggered when trying to reinvest dividends, but the swap failed
@@ -253,18 +247,39 @@ contract RayFiToken is ERC20, Ownable {
      * but keeping track of such data on-chain costs much more than the saved stablecoins, so we do not do that
      */
     function distributeDividends(uint256 gasForDividends) external onlyOwner {
-        uint256 amount = ERC20(s_dividendToken).balanceOf(address(this)) - s_lastDistribution;
-        if (amount > 0) {
-            s_magnifiedDividendPerShare += amount * MAGNITUDE / totalSupply();
-            s_totalDividendsDistributed += amount;
-
-            _process(gasForDividends, false);
-            _autoReinvest(gasForDividends);
-
-            s_lastDistribution = ERC20(s_dividendToken).balanceOf(address(this));
-
-            emit DividendsDistributed(s_magnifiedDividendPerShare, s_totalDividendsDistributed, s_lastDistribution);
+        uint256 totalUnclaimedDividends = ERC20(s_dividendToken).balanceOf(address(this));
+        if (totalUnclaimedDividends <= 0) {
+            revert RayFi__NothingToDistribute();
         }
+
+        uint256 totalSharesAmount = s_totalSharesAmount;
+        uint256 totalStakedRayFi = s_totalStakedAmount;
+        if (totalStakedRayFi >= 1) {
+            uint256 dividendsToReinvest = totalUnclaimedDividends * totalStakedRayFi / totalSharesAmount;
+            uint256 rayFiBalanceBefore = balanceOf(address(this));
+
+            _swapDividendsForRayFi(dividendsToReinvest);
+
+            uint256 rayFiToDistribute = balanceOf(address(this)) - rayFiBalanceBefore;
+            uint256 dividendsToDistribute = totalUnclaimedDividends - dividendsToReinvest;
+
+            s_magnifiedRayFiPerShare = _calculateDividendPerShare(rayFiToDistribute, totalStakedRayFi);
+            s_magnifiedDividendPerShare =
+                _calculateDividendPerShare(dividendsToDistribute, totalSharesAmount - totalStakedRayFi);
+
+            _processDividends(gasForDividends);
+
+            delete s_magnifiedRayFiPerShare;
+            delete s_magnifiedDividendPerShare;
+        } else {
+            s_magnifiedDividendPerShare = _calculateDividendPerShare(totalUnclaimedDividends, totalSharesAmount);
+            _processDividends(gasForDividends);
+            delete s_magnifiedDividendPerShare;
+        }
+
+        s_totalDividendsDistributed += totalUnclaimedDividends;
+
+        emit DividendsDistributed(totalUnclaimedDividends, s_totalDividendsDistributed);
     }
 
     /**
@@ -339,13 +354,10 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice Get the shareholders of the RayFi protocol
-     * @dev This function is used by the Dividend Tracker to distribute dividends
-     * It is a known limitation that this function will revert if the shareholder array becomes too large
-     * This limitation only applies when the function is called by a contract, since it will be free otherwise
      * @return The list of shareholders
      */
     function getShareholders() external view returns (address[] memory) {
-        return s_shareholders.keys();
+        return s_shareholders.shareholders();
     }
 
     /**
@@ -353,7 +365,7 @@ contract RayFiToken is ERC20, Ownable {
      * @param user The user to check
      * @return The staked balance of the user
      */
-    function getStakedBalance(address user) external view returns (uint256) {
+    function getStakedBalanceOf(address user) external view returns (uint256) {
         return s_stakedBalances[user];
     }
 
@@ -364,6 +376,15 @@ contract RayFiToken is ERC20, Ownable {
      */
     function withdrawnDividendOf(address user) external view returns (uint256) {
         return s_withdrawnDividends[user];
+    }
+
+    /**
+     * @notice View the amount of RayFi that an address has reinvested.
+     * @param user The address of a token holder.
+     * @return The amount of RayFi that `user` has reinvested.
+     */
+    function reinvestedRayFiOf(address user) external view returns (uint256) {
+        return s_reinvestedRayFi[user];
     }
 
     /**
@@ -449,9 +470,16 @@ contract RayFiToken is ERC20, Ownable {
      */
     function _updateShareholder(address shareholder, uint256 balance) private {
         if (balance >= s_minimumTokenBalanceForDividends && !s_isExcludedFromDividends[shareholder]) {
-            s_shareholders.set(shareholder, balance);
+            uint256 oldBalance = s_shareholders.sharesOf(shareholder);
+            if (oldBalance <= 0) {
+                s_totalSharesAmount += balance;
+            } else {
+                s_totalSharesAmount = s_totalSharesAmount - oldBalance + balance;
+            }
+            s_shareholders.add(shareholder, balance);
         } else {
             s_shareholders.remove(shareholder);
+            s_totalSharesAmount -= balance;
         }
     }
 
@@ -469,29 +497,53 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Processes dividends for all token holders
+     * @dev Low-level function to swap dividends for RayFi tokens
+     * @param amount The amount of dividends to swap
      */
-    function _process(uint256 gasForDividends, bool isReinvesting) private {
+    function _swapDividendsForRayFi(uint256 amount) private {
+        ERC20(s_dividendToken).approve(address(s_router), amount);
+
+        address[] memory path = new address[](2);
+        path[0] = s_dividendToken;
+        path[1] = address(this);
+        (bool success,) = s_router.call(
+            abi.encodeWithSignature(
+                "swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
+                amount,
+                0,
+                path,
+                address(this),
+                block.timestamp
+            )
+        );
+        if (!success) {
+            revert RayFi__ReinvestSwapFailed();
+        }
+    }
+
+    /**
+     * @dev Low-level function to process dividends for all shareholders
+     * @param gasForDividends The amount of gas to use for processing dividends
+     */
+    function _processDividends(uint256 gasForDividends) private {
         uint256 startingGas = gasleft();
         if (startingGas <= gasForDividends - 1) {
-            revert RayFi__InsufficientGas();
+            revert RayFi__InsufficientGas(gasForDividends, startingGas);
         }
 
-        address[] memory shareholders = s_shareholders.keys();
-
-        uint256 shareholderCount = shareholders.length;
-        if (shareholders.length <= 0) {
+        uint256 shareholderCount = s_shareholders.length();
+        if (shareholderCount <= 0) {
             revert RayFi__ZeroShareholders();
         }
 
         uint256 gasUsed;
         uint256 lastProcessedIndex = s_lastProcessedIndex;
+        uint256 magnifiedDividendPerShare = s_magnifiedDividendPerShare;
+        uint256 magnifiedRayFiPerShare = s_magnifiedRayFiPerShare;
         while (gasUsed <= gasForDividends - 1) {
-            if (isReinvesting) {
-                _processReinvest(shareholders[lastProcessedIndex]);
-            } else {
-                _processAccount(shareholders[lastProcessedIndex]);
-            }
+            _processDividendOfUser(
+                s_shareholders.shareholderAt(lastProcessedIndex), magnifiedDividendPerShare, magnifiedRayFiPerShare
+            );
 
             lastProcessedIndex++;
             if (lastProcessedIndex >= shareholderCount) {
@@ -506,116 +558,73 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Processes dividends for an user
+     * @notice Processes dividends for a specific token holder
+     * @param user The address of the token holder
+     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
-    function _processAccount(address user) private {
-        uint256 withdrawableDividend = _getWithdrawableDividend(user);
-        withdrawableDividend -=
-            withdrawableDividend * (s_stakedBalances[user] * MAGNITUDE / balanceOf(user)) / MAGNITUDE;
-        if (withdrawableDividend >= 1) {
-            _withdrawDividendOfUser(user, withdrawableDividend);
-        }
-    }
+    function _processDividendOfUser(address user, uint256 magnifiedDividendPerShare, uint256 magnifiedRayFiPerShare)
+        private
+    {
+        uint256 earnedDividend = _getEarnedDividend(user, magnifiedDividendPerShare);
+        uint256 earnedRayFi = _getEarnedRayFi(user, magnifiedRayFiPerShare);
 
-    /**
-     * @notice Withdraws the stablecoins distributed to the sender.
-     */
-    function _withdrawDividendOfUser(address user, uint256 amount) private {
-        uint256 withdrawableDividend = _getWithdrawableDividend(user);
+        if (earnedDividend >= 1) {
+            s_withdrawnDividends[user] += earnedDividend;
 
-        if (withdrawableDividend >= 1 && amount <= withdrawableDividend) {
-            s_withdrawnDividends[user] += amount;
-
-            bool success = ERC20(s_dividendToken).transfer(user, amount);
-
+            bool success = ERC20(s_dividendToken).transfer(user, earnedDividend);
             if (!success) {
-                s_withdrawnDividends[user] = s_withdrawnDividends[user] - amount;
+                s_withdrawnDividends[user] -= earnedDividend;
             } else {
-                emit DividendsWithdrawn(user, amount);
+                emit DividendsWithdrawn(user, earnedDividend);
             }
         }
+        if (earnedRayFi >= 1) {
+            s_reinvestedRayFi[user] += earnedRayFi;
+
+            _stake(user, earnedRayFi);
+
+            emit DividendsReinvested(user, earnedRayFi);
+        }
     }
 
-    /**
-     * @dev Internal function used to reinvest and compound all the dividends of Prisma stakers
-     */
-    function _autoReinvest(uint256 gasForDividends) private {
-        uint256 totalStakedRayFi = s_totalStakedAmount;
-        uint256 totalUnclaimedDividend = ERC20(s_dividendToken).balanceOf(address(this));
-
-        if (totalStakedRayFi <= 0 || totalUnclaimedDividend <= 0) {
-            revert RayFi__NothingToReinvest();
-        }
-
-        ERC20(s_dividendToken).approve(address(s_router), totalUnclaimedDividend);
-        address[] memory path = new address[](2);
-        path[0] = s_dividendToken;
-        path[1] = address(this);
-        (bool success,) = s_router.call(
-            abi.encodeWithSignature(
-                "swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
-                totalUnclaimedDividend,
-                0,
-                path,
-                address(this),
-                block.timestamp
-            )
-        );
-        if (!success) {
-            revert RayFi__ReinvestSwapFailed();
-        }
-
-        uint256 contractRayFiBalance = balanceOf(address(this));
-
-        s_magnifiedRayFiPerShare = contractRayFiBalance * MAGNITUDE / totalStakedRayFi;
-        _process(gasForDividends, true);
-        delete s_magnifiedRayFiPerShare;
-
-        s_totalDividendsDistributed += totalUnclaimedDividend;
-    }
+    //////////////////////////////////////
+    // Private View & Pure Functions    //
+    //////////////////////////////////////
 
     /**
-     * @dev Internal function used to compound RayFi for `user`
-     */
-    function _processReinvest(address user) private returns (bool) {
-        uint256 reinvestableDividend = _getWithdrawableDividend(user);
-
-        if (reinvestableDividend >= 1) {
-            s_withdrawnDividends[user] += reinvestableDividend;
-            uint256 rayFiToCompound = _getEarnedRayFi(user);
-            _stake(user, rayFiToCompound);
-            emit DividendsReinvested(user, rayFiToCompound, s_lastDistribution, false);
-            return true;
-        }
-        return false;
-    }
-
-    ///////////////////////////////
-    // Private View Functions    //
-    ///////////////////////////////
-
-    /**
-     * @notice View the amount of dividend that an address can withdraw.
+     * @notice View the amount of dividend that an address has earned in the last cycle.
      * @param user The address of a token holder.
-     * @return The amount of dividend that `user` can withdraw.
+     * @return The amount of dividend that `user` has earned.
      */
-    function _getWithdrawableDividend(address user) private view returns (uint256) {
-        return _getTotalEarnedDividend(user) - s_withdrawnDividends[user];
+    function _getEarnedDividend(address user, uint256 magnifiedDividendPerShare) private view returns (uint256) {
+        return _calculateDividend(magnifiedDividendPerShare, balanceOf(user)) - s_withdrawnDividends[user];
     }
 
     /**
-     * @notice View the amount of dividend that an address has earned in total.
+     * @notice View the amount of RayFi that an address has earned in the last cycle.
      * @param user The address of a token holder.
-     * @return The amount of dividend that `user` has earned in total.
+     * @return The amount of RayFi that `user` has earned.
      */
-    function _getTotalEarnedDividend(address user) private view returns (uint256) {
-        return s_magnifiedDividendPerShare * balanceOf(user) / MAGNITUDE;
+    function _getEarnedRayFi(address user, uint256 magnifiedRayFiPerShare) private view returns (uint256) {
+        return _calculateDividend(magnifiedRayFiPerShare, s_stakedBalances[user]) - s_reinvestedRayFi[user];
     }
 
     /**
-     * @notice View the amount of RayFi an address has earned from staking
+     * @dev Low-level function to de-magnify the dividend amount per share for a given balance
+     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @param balance The balance to use as reference
      */
-    function _getEarnedRayFi(address user) private view returns (uint256) {
-        return s_magnifiedRayFiPerShare * s_stakedBalances[user] / MAGNITUDE;
+    function _calculateDividend(uint256 magnifiedDividendPerShare, uint256 balance) private pure returns (uint256) {
+        return magnifiedDividendPerShare * balance / MAGNITUDE;
+    }
+
+    /**
+     * @dev Low-level function to calculate the magnified amount of dividend per share
+     * @param totalDividends The total amount of dividends
+     * @param totalShares The total amount of shares
+     */
+    function _calculateDividendPerShare(uint256 totalDividends, uint256 totalShares) private pure returns (uint256) {
+        return totalDividends * MAGNITUDE / totalShares;
     }
 }
