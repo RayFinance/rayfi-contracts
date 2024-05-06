@@ -5,7 +5,6 @@ pragma solidity ^0.8.20;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IterableMapping} from "./IterableMapping.sol";
-import {IRayFiToken} from "./IRayFiToken.sol";
 
 /**
  * @title RayFiToken
@@ -13,7 +12,7 @@ import {IRayFiToken} from "./IRayFiToken.sol";
  * @notice This contract is the underlying token of the Ray Finance ecosystem.
  * @notice The primary purpose of this token is acquiring (or selling) shares of the Ray Finance protocol.
  */
-contract RayFiToken is ERC20, Ownable, IRayFiToken {
+contract RayFiToken is ERC20, Ownable {
     //////////////
     // Types    //
     //////////////
@@ -24,30 +23,32 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     // State Variables //
     /////////////////////
 
-    uint256 private constant MAX_SUPPLY = 10_000_000 * (10 ** 18);
+    uint256 private constant MAX_SUPPLY = 10_000_000;
     uint256 private constant MAX_FEES = 10;
-    uint256 private constant INTERNAL_TRANSACTION_OFF = 1;
-    uint256 private constant INTERNAL_TRANSACTION_ON = 2;
+    uint256 private constant MAGNITUDE = 2 ** 128;
 
-    IterableMapping.Map private s_shareholders;
+    uint256 private s_totalStakedAmount;
+    uint256 private s_minimumTokenBalanceForDividends;
+    uint256 private s_magnifiedRayFiPerShare;
+    uint256 private s_magnifiedDividendPerShare;
+    uint256 private s_lastDistribution;
+    uint256 private s_lastProcessedIndex;
+    uint256 private s_totalDividendsDistributed;
 
-    address private s_dividendTracker;
+    address private s_dividendToken;
+    address private s_router;
+    address private s_feeReceiver;
+
+    uint8 private s_buyFee;
+    uint8 private s_sellFee;
 
     mapping(address user => bool isExemptFromFees) private s_isFeeExempt;
     mapping(address user => bool isExcludedFromDividends) private s_isExcludedFromDividends;
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
+    mapping(address => uint256) private s_withdrawnDividends;
 
-    uint256 private s_totalStakedAmount;
-    uint256 private s_minSwapFees;
-    uint256 private s_minimumTokenBalanceForDividends;
-    uint256 private s_buyLiquidityFee;
-    uint256 private s_buyTreasuryFee;
-    uint256 private s_buyRayFundFee;
-    uint256 private s_sellLiquidityFee;
-    uint256 private s_sellTreasuryFee;
-    uint256 private s_sellRayFundFee;
-    uint256 private s_internalTransactionStatus;
+    IterableMapping.Map private s_shareholders;
 
     ////////////////
     /// Events    //
@@ -55,7 +56,7 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
 
     /**
      * @notice Emitted when RayFi is staked
-     * @param staker The address of the account that staked the RayFi
+     * @param staker The address of the user that staked the RayFi
      * @param stakedAmount The amount of RayFi that was staked
      * @param totalStakedAmount The total amount of RayFi staked in this contract
      */
@@ -63,7 +64,7 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
 
     /**
      * @notice Emitted when RayFi is unstaked
-     * @param unstaker The address of the account that unstaked the RayFi
+     * @param unstaker The address of the user that unstaked the RayFi
      * @param unstakedAmount The amount of RayFi that was unstaked
      * @param totalStakedAmount The total amount of RayFi staked in this contract
      */
@@ -71,28 +72,31 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
 
     /**
      * @notice Emitted when the fee amounts for buys and sells are updated
-     * @param buyLiquidityFee The new buy liquidity fee
-     * @param buyTreasuryFee The new buy treasury fee
-     * @param buyRayFundFee The new buy RAY fund fee
-     * @param sellLiquidityFee The new sell liquidity fee
-     * @param sellTreasuryFee The new sell treasury fee
-     * @param sellRayFundFee The new sell RAY fund fee
+     * @param buyFee The new buy fee
+     * @param sellFee The new sell fee
      */
-    event FeeAmountsUpdated(
-        uint256 buyLiquidityFee,
-        uint256 buyTreasuryFee,
-        uint256 buyRayFundFee,
-        uint256 sellLiquidityFee,
-        uint256 sellTreasuryFee,
-        uint256 sellRayFundFee
-    );
+    event FeeAmountsUpdated(uint8 buyFee, uint8 sellFee);
 
     /**
-     * @notice Emitted when the minimum swap fees for conversion to stablecoin are updated
-     * @param newMin The new minimum swap fees
-     * @param oldMin The previous minimum swap fees
+     * @notice Emitted when the fee receiver is updated
+     * @param newFeeReceiver The new fee receiver
+     * @param oldFeeReceiver The old fee receiver
      */
-    event MinSwapFeesUpdated(uint256 indexed newMin, uint256 indexed oldMin);
+    event FeeReceiverUpdated(address indexed newFeeReceiver, address indexed oldFeeReceiver);
+
+    /**
+     * @notice Emitted when the dividend token is updated
+     * @param newDividendToken The new dividend token
+     * @param oldDividendToken The old dividend token
+     */
+    event DividendTokenUpdated(address indexed newDividendToken, address indexed oldDividendToken);
+
+    /**
+     * @notice Emitted when the router is updated
+     * @param newRouter The new router
+     * @param oldRouter The old router
+     */
+    event RouterUpdated(address indexed newRouter, address indexed oldRouter);
 
     /**
      * @notice Emitted when an automated market maker pair is updated
@@ -100,6 +104,41 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
      * @param active Whether the pair is an automated market maker pair
      */
     event AutomatedMarketPairUpdated(address indexed pair, bool indexed active);
+
+    /**
+     * @notice Emitted when the minimum token balance for dividends is updated
+     * @param newMinimum The new minimum token balance for dividends
+     * @param oldMinimum The previous minimum token balance for dividends
+     */
+    event MinimumTokenBalanceForDividendsUpdated(uint256 indexed newMinimum, uint256 indexed oldMinimum);
+
+    /**
+     * @notice Emitted when dividends are distributed
+     * @param dividendPerShare The dividend amount per share
+     * @param totalDividendsDistributed The total dividends that have been distributed
+     * @param lastDistribution Distribution offset to avoid double counting
+     */
+    event DividendsDistributed(
+        uint256 indexed dividendPerShare, uint256 indexed totalDividendsDistributed, uint256 indexed lastDistribution
+    );
+
+    /**
+     * @notice Emitted when dividends are withdrawn
+     * @param user The user that withdrew the dividends
+     * @param amount The amount of dividends that were withdrawn
+     */
+    event DividendsWithdrawn(address indexed user, uint256 indexed amount);
+
+    /**
+     * @notice Emitted when dividends are reinvested
+     * @param user The user that reinvested the dividends
+     * @param amount The amount of dividends that were reinvested
+     * @param lastDistribution Distribution offset to avoid double counting
+     * @param manual A flag indicating whether the reinvestment was manual
+     */
+    event DividendsReinvested(
+        address indexed user, uint256 indexed amount, uint256 indexed lastDistribution, bool manual
+    );
 
     //////////////////
     // Errors       //
@@ -127,35 +166,46 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     error RayFi__InsufficientStakedBalance(uint256 stakedAmount, uint256 unstakeAmount);
 
     /**
-     * @dev Indicates a failure in compounding RayFi tokens,
-     * due to the caller not being the RayFi Dividend Tracker
-     * @param caller The address of the caller
+     * @dev Triggered when trying to process dividends, but there are no shareholders
      */
-    error RayFi__InvalidCompoundCaller(address caller);
+    error RayFi__ZeroShareholders();
 
     /**
-     * @dev Indicates a failure in swapping fees,
-     * due to the call to the Dividend Tracker failing
+     * @dev Triggered when trying to process dividends, but not enough gas was sent with the transaction
      */
-    error RayFi__FailedToSwapFees();
+    error RayFi__InsufficientGas();
+
+    /**
+     * @dev Triggered when trying to reinvest dividends, but there are no dividends to reinvest
+     */
+    error RayFi__NothingToReinvest();
+
+    /**
+     * @dev Triggered when trying to reinvest dividends, but the swap failed
+     */
+    error RayFi__ReinvestSwapFailed();
 
     ////////////////////
     // Constructor    //
     ////////////////////
 
     /**
-     * @param dividendTracker The address of the contract that will track dividends
-     * @param minSwapFees The minimum amount of fees required to swap to stablecoin
+     * @param dividendToken The address of the token that will be used to distribute dividends
+     * @param router The address of the router that will be used to reinvest dividends
+     * @param feeReceiver The address of the contract that will track dividends
      */
-    constructor(address dividendTracker, uint256 minSwapFees) ERC20("RayFi", "RAYFI") Ownable(msg.sender) {
-        if (dividendTracker == address(0)) {
+    constructor(address dividendToken, address router, address feeReceiver)
+        ERC20("RayFi", "RAYFI")
+        Ownable(msg.sender)
+    {
+        if (dividendToken == address(0) || feeReceiver == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
 
-        s_dividendTracker = dividendTracker;
-
-        s_minSwapFees = minSwapFees * (10 ** decimals());
-        s_isFeeExempt[dividendTracker] = true;
+        s_dividendToken = dividendToken;
+        s_router = router;
+        s_feeReceiver = feeReceiver;
+        s_isFeeExempt[feeReceiver] = true;
 
         _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
     }
@@ -165,7 +215,7 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     ///////////////////////////
 
     /**
-     * @notice This functions allows users to stake their RayFi tokens in order to have their dividends compounded
+     * @notice This function allows users to stake their RayFi tokens to have their dividends reinvested in RayFi
      * @param value The amount of tokens to stake
      */
     function stake(uint256 value) external {
@@ -174,17 +224,17 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     }
 
     /**
-     * @notice This functions allows users to unstake their RayFi tokens
+     * @notice This function allows users to unstake their RayFi tokens
      * @param value The amount of tokens to unstake
      */
     function unstake(uint256 value) external {
         uint256 stakedBalance = s_stakedBalances[msg.sender];
-        if (stakedBalance < value) {
+        if (stakedBalance <= value - 1) {
             revert RayFi__InsufficientStakedBalance(stakedBalance, value);
         }
 
         s_stakedBalances[msg.sender] -= value;
-        if (s_stakedBalances[msg.sender] == 0) {
+        if (s_stakedBalances[msg.sender] <= 0) {
             delete s_stakedBalances[msg.sender];
         }
         s_totalStakedAmount -= value;
@@ -195,63 +245,43 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     }
 
     /**
-     * @notice This function is called by the dividend tracker to compound the RayFi tokens for a user
-     * @dev Compounding intentionally bypasses buy fees
-     * @param user The address of the user to compound the RayFi tokens for
-     * @param value The amount of RayFi tokens to compound
+     * @notice Distributes stablecoins to token holders as dividends.
+     * @dev In each distribution, there is a small amount of stablecoins not distributed,
+     * the magnified amount of which is `(amount * MAGNITUDE) % totalSupply()`
+     * With a well-chosen `MAGNITUDE`, this amount (de-magnified) can be less than 1 wei
+     * We can actually keep track of the undistributed stablecoins for the next distribution,
+     * but keeping track of such data on-chain costs much more than the saved stablecoins, so we do not do that
      */
-    function compound(address user, uint256 value) external {
-        if (msg.sender != s_dividendTracker) {
-            revert RayFi__InvalidCompoundCaller(msg.sender);
+    function distributeDividends(uint256 gasForDividends) external onlyOwner {
+        uint256 amount = ERC20(s_dividendToken).balanceOf(address(this)) - s_lastDistribution;
+        if (amount > 0) {
+            s_magnifiedDividendPerShare += amount * MAGNITUDE / totalSupply();
+            s_totalDividendsDistributed += amount;
+
+            _process(gasForDividends, false);
+            _autoReinvest(gasForDividends);
+
+            s_lastDistribution = ERC20(s_dividendToken).balanceOf(address(this));
+
+            emit DividendsDistributed(s_magnifiedDividendPerShare, s_totalDividendsDistributed, s_lastDistribution);
         }
-        _update(msg.sender, address(this), value);
-        _stake(user, value);
     }
 
     /**
      * @notice Updates the fee amounts for buys and sells while ensuring the total fees do not exceed maximum
-     * @param buyLiquidityFee The percentage of the buy fee that goes to the liquidity pool
-     * @param buyTreasuryFee The percentage of the buy fee that goes to the treasury
-     * @param buyRayFundFee The percentage of the buy fee that goes to the RAY fund
-     * @param sellLiquidityFee The percentage of the sell fee that goes to the liquidity pool
-     * @param sellTreasuryFee The percentage of the sell fee that goes to the treasury
-     * @param sellRayFundFee The percentage of the sell fee that goes to the RAY fund
+     * @param buyFee The new buy fee
+     * @param sellFee The new sell fee
      */
-    function setFeeAmounts(
-        uint256 buyLiquidityFee,
-        uint256 buyTreasuryFee,
-        uint256 buyRayFundFee,
-        uint256 sellLiquidityFee,
-        uint256 sellTreasuryFee,
-        uint256 sellRayFundFee
-    ) external onlyOwner {
-        uint256 totalFees =
-            buyLiquidityFee + buyTreasuryFee + buyRayFundFee + sellLiquidityFee + sellTreasuryFee + sellRayFundFee;
-        if (totalFees > MAX_FEES) {
-            revert RayFi__FeesTooHigh(totalFees);
+    function setFeeAmounts(uint8 buyFee, uint8 sellFee) external onlyOwner {
+        uint8 totalFee = buyFee + sellFee;
+        if (totalFee >= MAX_FEES + 1) {
+            revert RayFi__FeesTooHigh(totalFee);
         }
 
-        s_buyLiquidityFee = buyLiquidityFee;
-        s_buyTreasuryFee = buyTreasuryFee;
-        s_buyRayFundFee = buyRayFundFee;
-        s_sellLiquidityFee = sellLiquidityFee;
-        s_sellTreasuryFee = sellTreasuryFee;
-        s_sellRayFundFee = sellRayFundFee;
+        s_buyFee = buyFee;
+        s_sellFee = sellFee;
 
-        emit FeeAmountsUpdated(
-            buyLiquidityFee, buyTreasuryFee, buyRayFundFee, sellLiquidityFee, sellTreasuryFee, sellRayFundFee
-        );
-    }
-
-    /**
-     * @notice Changes the minimum swap fees for conversion to stablecoin to a new value
-     * @dev Can only be called by the owner
-     * @param newValue The new value for the minimum swap fees
-     */
-    function setMinSwapFees(uint256 newValue) external onlyOwner {
-        uint256 oldValue = s_minSwapFees;
-        s_minSwapFees = newValue;
-        emit MinSwapFeesUpdated(newValue, oldValue);
+        emit FeeAmountsUpdated(buyFee, sellFee);
     }
 
     /**
@@ -265,19 +295,47 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     }
 
     /**
-     * @notice Updates the Dividend Tracker to a new address, excluding it and this contract from dividends
-     * @param dividendTracker The new address for the Dividend Tracker
+     * @notice Sets the address of the token that will be distributed as dividends
+     * @param newDividendToken The address of the new dividend token
      */
-    function setDividendTracker(address dividendTracker) external onlyOwner {
-        if (dividendTracker == address(0)) {
+    function setDividendToken(address newDividendToken) external onlyOwner {
+        if (newDividendToken == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
-        s_dividendTracker = dividendTracker;
+        address oldDividendToken = s_dividendToken;
+        s_dividendToken = newDividendToken;
+        emit DividendTokenUpdated(newDividendToken, oldDividendToken);
     }
 
-    /////////////////////////////////////////
-    // External & Public View Functions    //
-    /////////////////////////////////////////
+    /**
+     * @notice Sets the address of the router that will be used to reinvest dividends
+     * @param newRouter The address of the new router
+     */
+    function setRouter(address newRouter) external onlyOwner {
+        if (newRouter == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
+        }
+        address oldRouter = s_router;
+        s_router = newRouter;
+        emit RouterUpdated(newRouter, oldRouter);
+    }
+
+    /**
+     * @notice Sets the address that will receive fees charged on transfers
+     * @param newFeeReceiver The address of the fee receiver
+     */
+    function setFeeReceiver(address newFeeReceiver) external onlyOwner {
+        if (newFeeReceiver == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
+        }
+        address oldFeeReceiver = s_feeReceiver;
+        s_feeReceiver = newFeeReceiver;
+        emit FeeReceiverUpdated(newFeeReceiver, oldFeeReceiver);
+    }
+
+    ////////////////////////////////
+    // External View Functions    //
+    ////////////////////////////////
 
     /**
      * @notice Get the shareholders of the RayFi protocol
@@ -300,6 +358,15 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     }
 
     /**
+     * @notice View the amount of dividend that an address has withdrawn.
+     * @param user The address of a token holder.
+     * @return The amount of dividend in that `user` has withdrawn.
+     */
+    function withdrawnDividendOf(address user) external view returns (uint256) {
+        return s_withdrawnDividends[user];
+    }
+
+    /**
      * @notice Get the total amount of staked tokens
      * @return The total staked tokens amount
      */
@@ -308,71 +375,40 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
     }
 
     /**
-     * @notice Get the Dividend Tracker
-     * @return The address of the Dividend Tracker
+     * @notice Returns the total amount of dividends distributed by the contract
+     *
      */
-    function getDividendTracker() external view returns (address) {
-        return s_dividendTracker;
+    function getTotalDividendsDistributed() external view returns (uint256) {
+        return s_totalDividendsDistributed;
     }
 
     /**
-     * @notice Get the minimum swap fees for conversion to stablecoin
-     * @return The minimum swap fees
+     * @notice Get the fee receiver
+     * @return The address of the fee receiver
      */
-    function getMinSwapFees() external view returns (uint256) {
-        return s_minSwapFees;
+    function getFeeReceiver() external view returns (address) {
+        return s_feeReceiver;
     }
 
     /**
-     * @notice Get the fee amounts for buys and sells
-     * @return buyLiquidityFee The percentage of the buy fee that goes to the liquidity pool
-     * @return buyTreasuryFee The percentage of the buy fee that goes to the treasury
-     * @return buyRayFundFee The percentage of the buy fee that goes to the RAY fund
-     * @return sellLiquidityFee The percentage of the sell fee that goes to the liquidity pool
-     * @return sellTreasuryFee The percentage of the sell fee that goes to the treasury
-     * @return sellRayFundFee The percentage of the sell fee that goes to the RAY fund
+     * @notice Returns the buy fee
+     * @return The buy fee
      */
-    function getFeeAmounts()
-        external
-        view
-        returns (
-            uint256 buyLiquidityFee,
-            uint256 buyTreasuryFee,
-            uint256 buyRayFundFee,
-            uint256 sellLiquidityFee,
-            uint256 sellTreasuryFee,
-            uint256 sellRayFundFee
-        )
-    {
-        return (
-            s_buyLiquidityFee,
-            s_buyTreasuryFee,
-            s_buyRayFundFee,
-            s_sellLiquidityFee,
-            s_sellTreasuryFee,
-            s_sellRayFundFee
-        );
+    function getBuyFee() external view returns (uint256) {
+        return s_buyFee;
     }
 
     /**
-     * @notice Returns the total buy fees, which is the sum of liquidity fee, treasury fee and RAY fund fee for buys
-     * @return The total buy fees
+     * @notice Returns the sell fee
+     * @return The sell fee
      */
-    function getTotalBuyFees() public view returns (uint256) {
-        return s_buyLiquidityFee + s_buyTreasuryFee + s_buyRayFundFee;
+    function getSellFee() external view returns (uint256) {
+        return s_sellFee;
     }
 
-    /**
-     * @notice Returns the total sell fees, which is the sum of liquidity fee, treasury fee and RAY fund fee for sells
-     * @return The total sell fees
-     */
-    function getTotalSellFees() public view returns (uint256) {
-        return s_sellLiquidityFee + s_sellTreasuryFee + s_sellRayFundFee;
-    }
-
-    /////////////////////////////////////
-    // Internal & Private Functions    //
-    /////////////////////////////////////
+    //////////////////////////
+    // Private Functions    //
+    //////////////////////////
 
     /**
      * @dev Overrides the internal `_update` function to include fee logic and update the dividend tracker
@@ -381,33 +417,22 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
      * @param value The amount of tokens to transfer
      */
     function _update(address from, address to, uint256 value) internal override {
-        if (s_internalTransactionStatus != INTERNAL_TRANSACTION_ON) {
-            // Buy order
-            if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
-                uint256 totalBuyFees = getTotalBuyFees();
-                if (totalBuyFees > 0) {
-                    uint256 fee = (value * totalBuyFees) / 100;
-                    value -= fee;
-                    super._update(from, s_dividendTracker, fee);
-                }
+        // Buy order
+        if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
+            uint8 buyFee = s_buyFee;
+            if (buyFee >= 1) {
+                uint256 fee = value * buyFee / 100;
+                value -= fee;
+                super._update(from, s_feeReceiver, fee);
             }
-            // Sell order
-            else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
-                uint256 totalSellFees = getTotalSellFees();
-                if (totalSellFees > 0) {
-                    uint256 fee = (value * totalSellFees) / 100;
-                    value -= fee;
-                    super._update(from, s_dividendTracker, fee);
-                }
-
-                if (balanceOf(s_dividendTracker) >= s_minSwapFees) {
-                    s_internalTransactionStatus = INTERNAL_TRANSACTION_ON;
-                    (bool success,) = s_dividendTracker.call(abi.encodeWithSignature("swapFees()"));
-                    if (!success) {
-                        revert RayFi__FailedToSwapFees();
-                    }
-                    s_internalTransactionStatus = INTERNAL_TRANSACTION_OFF;
-                }
+        }
+        // Sell order
+        else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
+            uint8 sellFee = s_sellFee;
+            if (sellFee >= 1) {
+                uint256 fee = value * sellFee / 100;
+                value -= fee;
+                super._update(from, s_feeReceiver, fee);
             }
         }
 
@@ -441,5 +466,156 @@ contract RayFiToken is ERC20, Ownable, IRayFiToken {
         s_totalStakedAmount += value;
 
         emit RayFiStaked(user, value, s_totalStakedAmount);
+    }
+
+    /**
+     * @notice Processes dividends for all token holders
+     */
+    function _process(uint256 gasForDividends, bool isReinvesting) private {
+        uint256 startingGas = gasleft();
+        if (startingGas <= gasForDividends - 1) {
+            revert RayFi__InsufficientGas();
+        }
+
+        address[] memory shareholders = s_shareholders.keys();
+
+        uint256 shareholderCount = shareholders.length;
+        if (shareholders.length <= 0) {
+            revert RayFi__ZeroShareholders();
+        }
+
+        uint256 gasUsed;
+        uint256 lastProcessedIndex = s_lastProcessedIndex;
+        while (gasUsed <= gasForDividends - 1) {
+            if (isReinvesting) {
+                _processReinvest(shareholders[lastProcessedIndex]);
+            } else {
+                _processAccount(shareholders[lastProcessedIndex]);
+            }
+
+            lastProcessedIndex++;
+            if (lastProcessedIndex >= shareholderCount) {
+                delete lastProcessedIndex;
+                break;
+            }
+
+            gasUsed += startingGas - gasleft();
+        }
+
+        s_lastProcessedIndex = lastProcessedIndex;
+    }
+
+    /**
+     * @notice Processes dividends for an user
+     */
+    function _processAccount(address user) private {
+        uint256 withdrawableDividend = _getWithdrawableDividend(user);
+        withdrawableDividend -=
+            withdrawableDividend * (s_stakedBalances[user] * MAGNITUDE / balanceOf(user)) / MAGNITUDE;
+        if (withdrawableDividend >= 1) {
+            _withdrawDividendOfUser(user, withdrawableDividend);
+        }
+    }
+
+    /**
+     * @notice Withdraws the stablecoins distributed to the sender.
+     */
+    function _withdrawDividendOfUser(address user, uint256 amount) private {
+        uint256 withdrawableDividend = _getWithdrawableDividend(user);
+
+        if (withdrawableDividend >= 1 && amount <= withdrawableDividend) {
+            s_withdrawnDividends[user] += amount;
+
+            bool success = ERC20(s_dividendToken).transfer(user, amount);
+
+            if (!success) {
+                s_withdrawnDividends[user] = s_withdrawnDividends[user] - amount;
+            } else {
+                emit DividendsWithdrawn(user, amount);
+            }
+        }
+    }
+
+    /**
+     * @dev Internal function used to reinvest and compound all the dividends of Prisma stakers
+     */
+    function _autoReinvest(uint256 gasForDividends) private {
+        uint256 totalStakedRayFi = s_totalStakedAmount;
+        uint256 totalUnclaimedDividend = ERC20(s_dividendToken).balanceOf(address(this));
+
+        if (totalStakedRayFi <= 0 || totalUnclaimedDividend <= 0) {
+            revert RayFi__NothingToReinvest();
+        }
+
+        ERC20(s_dividendToken).approve(address(s_router), totalUnclaimedDividend);
+        address[] memory path = new address[](2);
+        path[0] = s_dividendToken;
+        path[1] = address(this);
+        (bool success,) = s_router.call(
+            abi.encodeWithSignature(
+                "swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
+                totalUnclaimedDividend,
+                0,
+                path,
+                address(this),
+                block.timestamp
+            )
+        );
+        if (!success) {
+            revert RayFi__ReinvestSwapFailed();
+        }
+
+        uint256 contractRayFiBalance = balanceOf(address(this));
+
+        s_magnifiedRayFiPerShare = contractRayFiBalance * MAGNITUDE / totalStakedRayFi;
+        _process(gasForDividends, true);
+        delete s_magnifiedRayFiPerShare;
+
+        s_totalDividendsDistributed += totalUnclaimedDividend;
+    }
+
+    /**
+     * @dev Internal function used to compound RayFi for `user`
+     */
+    function _processReinvest(address user) private returns (bool) {
+        uint256 reinvestableDividend = _getWithdrawableDividend(user);
+
+        if (reinvestableDividend >= 1) {
+            s_withdrawnDividends[user] += reinvestableDividend;
+            uint256 rayFiToCompound = _getEarnedRayFi(user);
+            _stake(user, rayFiToCompound);
+            emit DividendsReinvested(user, rayFiToCompound, s_lastDistribution, false);
+            return true;
+        }
+        return false;
+    }
+
+    ///////////////////////////////
+    // Private View Functions    //
+    ///////////////////////////////
+
+    /**
+     * @notice View the amount of dividend that an address can withdraw.
+     * @param user The address of a token holder.
+     * @return The amount of dividend that `user` can withdraw.
+     */
+    function _getWithdrawableDividend(address user) private view returns (uint256) {
+        return _getTotalEarnedDividend(user) - s_withdrawnDividends[user];
+    }
+
+    /**
+     * @notice View the amount of dividend that an address has earned in total.
+     * @param user The address of a token holder.
+     * @return The amount of dividend that `user` has earned in total.
+     */
+    function _getTotalEarnedDividend(address user) private view returns (uint256) {
+        return s_magnifiedDividendPerShare * balanceOf(user) / MAGNITUDE;
+    }
+
+    /**
+     * @notice View the amount of RayFi an address has earned from staking
+     */
+    function _getEarnedRayFi(address user) private view returns (uint256) {
+        return s_magnifiedRayFiPerShare * s_stakedBalances[user] / MAGNITUDE;
     }
 }
