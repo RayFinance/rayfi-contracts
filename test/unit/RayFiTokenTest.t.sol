@@ -14,9 +14,14 @@ contract RayFiTokenTest is Test {
     ERC20Mock dividendToken;
     IUniswapV2Router02 router;
 
-    uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 * (10 ** 18);
-    uint256 public constant INITIAL_DIVIDEND_LIQUIDITY = 14_739 * (10 ** 18);
+    uint256 public constant DECIMALS = 18;
+    uint256 public constant MAX_SUPPLY = 10_000_000 * (10 ** DECIMALS);
+    uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 * (10 ** DECIMALS);
+    uint256 public constant INITIAL_DIVIDEND_LIQUIDITY = 14_739 * (10 ** DECIMALS);
     uint256 public constant TRANSFER_AMOUNT = 1000;
+
+    string public constant TOKEN_NAME = "RayFi";
+    string public constant TOKEN_SYMBOL = "RAYFI";
 
     address FEE_RECEIVER = makeAddr("feeReceiver");
     address DIVIDEND_RECEIVER = makeAddr("dividendReceiver");
@@ -24,7 +29,9 @@ contract RayFiTokenTest is Test {
     function setUp() external {
         DeployRayFiToken deployRayFiToken = new DeployRayFiToken();
         (rayFiToken, dividendToken, router) = deployRayFiToken.run(FEE_RECEIVER, DIVIDEND_RECEIVER);
+    }
 
+    modifier liquidityAdded() {
         vm.startPrank(msg.sender);
         dividendToken.mint(msg.sender, INITIAL_DIVIDEND_LIQUIDITY);
 
@@ -42,13 +49,29 @@ contract RayFiTokenTest is Test {
             block.timestamp
         );
         vm.stopPrank();
+        _;
     }
 
-    function testWasSetUpCorrectly() public view {
+    /////////////////////////
+    // Constructor Tests ////
+    /////////////////////////
+
+    function testRevertsOnZeroAddressArguments() public {
+        vm.expectRevert(RayFiToken.RayFi__CannotSetToZeroAddress.selector);
+        new RayFiToken(address(0), address(0), address(0), address(0));
+    }
+
+    function testERC20WasInitializedCorrectly() public view {
+        assertEq(rayFiToken.name(), TOKEN_NAME);
+        assertEq(rayFiToken.symbol(), TOKEN_SYMBOL);
+        assertEq(rayFiToken.decimals(), DECIMALS);
+        assertEq(rayFiToken.totalSupply(), MAX_SUPPLY);
+    }
+
+    function testRayFiWasInitializedCorrectly() public view {
         assertEq(address(rayFiToken.owner()), msg.sender);
-        assertEq(rayFiToken.balanceOf(msg.sender), rayFiToken.totalSupply() - INITIAL_RAYFI_LIQUIDITY);
+        assertEq(rayFiToken.balanceOf(msg.sender), rayFiToken.totalSupply());
         assertEq(rayFiToken.getFeeReceiver(), FEE_RECEIVER);
-        assert(IUniswapV2Factory(router.factory()).getPair(address(rayFiToken), address(dividendToken)) != address(0));
     }
 
     function testWalletToWalletTransfersWork() public {

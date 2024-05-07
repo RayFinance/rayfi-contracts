@@ -214,7 +214,10 @@ contract RayFiToken is ERC20, Ownable {
         ERC20("RayFi", "RAYFI")
         Ownable(msg.sender)
     {
-        if (dividendToken == address(0) || feeReceiver == address(0)) {
+        if (
+            dividendToken == address(0) || router == address(0) || feeReceiver == address(0)
+                || dividendReceiver == address(0)
+        ) {
             revert RayFi__CannotSetToZeroAddress();
         }
 
