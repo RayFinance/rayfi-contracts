@@ -3,8 +3,8 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {DeployRayFiToken} from "../script/DeployRayFiToken.s.sol";
-import {RayFiToken} from "../src/RayFiToken.sol";
+import {DeployRayFiToken} from "../../script/DeployRayFiToken.s.sol";
+import {RayFiToken} from "../../src/RayFiToken.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
@@ -36,8 +36,8 @@ contract RayFiTokenTest is Test {
             address(dividendToken),
             INITIAL_RAYFI_LIQUIDITY,
             INITIAL_DIVIDEND_LIQUIDITY,
-            0,
-            0,
+            INITIAL_RAYFI_LIQUIDITY,
+            INITIAL_DIVIDEND_LIQUIDITY,
             address(this),
             block.timestamp
         );
