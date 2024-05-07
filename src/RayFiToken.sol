@@ -226,6 +226,8 @@ contract RayFiToken is ERC20, Ownable {
         s_feeReceiver = feeReceiver;
         s_dividendReceiver = dividendReceiver;
         s_isFeeExempt[dividendReceiver] = true;
+        s_isExcludedFromDividends[address(this)] = true;
+        s_isExcludedFromDividends[address(0)] = true;
 
         _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
     }
@@ -443,6 +445,15 @@ contract RayFiToken is ERC20, Ownable {
      */
     function getShareholders() external view returns (address[] memory) {
         return s_shareholders.shareholders();
+    }
+
+    /**
+     * @notice Get the total amount of shares owned by a user
+     * @dev This is expected to be 0 if `balanceOf(user)` < `s_minimumTokenBalanceForDividends`
+     * @return The total shares amount
+     */
+    function getSharesBalanceOf(address user) external view returns (uint256) {
+        return s_shareholders.sharesOf(user);
     }
 
     /**

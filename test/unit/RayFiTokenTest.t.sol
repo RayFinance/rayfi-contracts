@@ -58,6 +58,13 @@ contract RayFiTokenTest is Test {
         _;
     }
 
+    modifier minimumBalanceForDividendsSet() {
+        vm.startPrank(msg.sender);
+        rayFiToken.setMinimumTokenBalanceForDividends(MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS);
+        vm.stopPrank();
+        _;
+    }
+
     /////////////////////////
     // Constructor Tests ////
     /////////////////////////
@@ -99,6 +106,39 @@ contract RayFiTokenTest is Test {
 
         rayFiToken.transferFrom(msg.sender, address(this), TRANSFER_AMOUNT);
         assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT);
+    }
+
+    function testTransfersUpdateShareholdersSet() public minimumBalanceForDividendsSet {
+        // 1. Check new shareholders are added correctly and balances are updated
+        vm.startPrank(msg.sender);
+        rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
+
+        address[] memory shareholders = rayFiToken.getShareholders();
+        assertEq(shareholders.length, 2);
+        assertEq(shareholders[0], msg.sender);
+        assertEq(shareholders[1], address(this));
+        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), MAX_SUPPLY - TRANSFER_AMOUNT);
+        assertEq(rayFiToken.getSharesBalanceOf(address(this)), TRANSFER_AMOUNT);
+
+        // 2. Check existing shareholders are updated correctly and balances are updated
+        rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
+
+        shareholders = rayFiToken.getShareholders();
+        assertEq(shareholders.length, 2);
+        assertEq(shareholders[0], msg.sender);
+        assertEq(shareholders[1], address(this));
+        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), MAX_SUPPLY - TRANSFER_AMOUNT * 2);
+        assertEq(rayFiToken.getSharesBalanceOf(address(this)), TRANSFER_AMOUNT * 2);
+        vm.stopPrank();
+
+        // 3. Check existing shareholders are removed if their balance goes below the minimum
+        rayFiToken.transfer(msg.sender, TRANSFER_AMOUNT * 2);
+
+        shareholders = rayFiToken.getShareholders();
+        assertEq(shareholders.length, 1);
+        assertEq(shareholders[0], msg.sender);
+        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), MAX_SUPPLY);
+        assertEq(rayFiToken.getSharesBalanceOf(address(this)), 0);
     }
 
     function testTransferRevertsWhenInsufficientBalance() public {

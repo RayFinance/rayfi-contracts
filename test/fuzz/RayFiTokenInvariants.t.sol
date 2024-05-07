@@ -20,6 +20,7 @@ contract Invariants is StdInvariant, Test {
 
     function invariant_gettersShouldNotRevert() public view {
         rayFiToken.getShareholders();
+        rayFiToken.getSharesBalanceOf(msg.sender);
         rayFiToken.getStakedBalanceOf(msg.sender);
         rayFiToken.getTotalStakedAmount();
         rayFiToken.getMinimumTokenBalanceForDividends();
