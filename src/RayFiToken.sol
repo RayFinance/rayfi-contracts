@@ -79,6 +79,13 @@ contract RayFiToken is ERC20, Ownable {
     event FeeAmountsUpdated(uint8 buyFee, uint8 sellFee);
 
     /**
+     * @notice Emitted when a user is marked as exempt from fees
+     * @param user The address of the user
+     * @param isExempt Whether the user is exempt from fees
+     */
+    event IsUserExemptFromFeesUpdated(address indexed user, bool indexed isExempt);
+
+    /**
      * @notice Emitted when the fee receiver is updated
      * @param newFeeReceiver The new fee receiver
      * @param oldFeeReceiver The old fee receiver
@@ -343,13 +350,32 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Updates whether a pair is an automated market maker pair
+     * @notice Sets whether a pair is an automated market maker pair for this token
      * @param pair The pair to update
-     * @param active Whether the pair is an automated market maker pair
+     * @param isActive Whether the pair is an automated market maker pair
      */
-    function setAutomatedMarketPair(address pair, bool active) external onlyOwner {
-        s_automatedMarketMakerPairs[pair] = active;
-        emit AutomatedMarketPairUpdated(pair, active);
+    function setAutomatedMarketPair(address pair, bool isActive) external onlyOwner {
+        s_automatedMarketMakerPairs[pair] = isActive;
+        emit AutomatedMarketPairUpdated(pair, isActive);
+    }
+
+    /**
+     * @notice Sets the minimum token balance for dividends
+     * @param newMinimum The new minimum token balance for dividends
+     */
+    function setMinimumTokenBalanceForDividends(uint256 newMinimum) external onlyOwner {
+        uint256 oldMinimum = s_minimumTokenBalanceForDividends;
+        s_minimumTokenBalanceForDividends = newMinimum;
+        emit MinimumTokenBalanceForDividendsUpdated(newMinimum, oldMinimum);
+    }
+
+    /**
+     * @notice Sets whether an address is exempt from fees
+     * @param user The address to update
+     */
+    function setFeeExempt(address user, bool isExempt) external onlyOwner {
+        s_isFeeExempt[user] = isExempt;
+        emit IsUserExemptFromFeesUpdated(user, isExempt);
     }
 
     /**
