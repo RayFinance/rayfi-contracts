@@ -9,6 +9,7 @@ import {RayFiToken, Ownable} from "../../src/RayFiToken.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 contract RayFiTokenTest is Test {
@@ -20,8 +21,8 @@ contract RayFiTokenTest is Test {
     uint256 public constant MAX_SUPPLY = 10_000_000 * (10 ** DECIMALS);
     uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 * (10 ** DECIMALS);
     uint256 public constant INITIAL_DIVIDEND_LIQUIDITY = 14_739 * (10 ** DECIMALS);
-    uint256 public constant TRANSFER_AMOUNT = 1000;
-    uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS = 1000;
+    uint256 public constant TRANSFER_AMOUNT = 10_000;
+    uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS = 1_000;
     uint8 public constant BUY_FEE = 4;
     uint8 public constant SELL_FEE = 4;
 
@@ -54,6 +55,17 @@ contract RayFiTokenTest is Test {
             address(this),
             block.timestamp
         );
+
+        rayFiToken.setAutomatedMarketPair(
+            IUniswapV2Factory(router.factory()).getPair(address(rayFiToken), address(dividendToken)), true
+        );
+        vm.stopPrank();
+        _;
+    }
+
+    modifier feesSet() {
+        vm.startPrank(msg.sender);
+        rayFiToken.setFeeAmounts(BUY_FEE, SELL_FEE);
         vm.stopPrank();
         _;
     }
@@ -165,6 +177,79 @@ contract RayFiTokenTest is Test {
     function testTransferRevertsWhenInvalidReceiver() public {
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
         rayFiToken.transfer(address(0), TRANSFER_AMOUNT);
+    }
+
+    //////////////////
+    // Swap Tests ////
+    //////////////////
+
+    function testSwapsWork() public liquidityAdded {
+        // 1. Test buy swap
+        address[] memory path = new address[](2);
+        path[0] = address(rayFiToken);
+        path[1] = address(dividendToken);
+        uint256 amountIn = TRANSFER_AMOUNT * (10 ** DECIMALS);
+        uint256 amountOut = router.getAmountOut(amountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        vm.startPrank(msg.sender);
+        rayFiToken.approve(address(router), amountIn);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            amountIn, amountOut, path, msg.sender, block.timestamp
+        );
+        assertEq(dividendToken.balanceOf(msg.sender), amountOut);
+
+        // 2. Test sell swap
+        path[0] = address(dividendToken);
+        path[1] = address(rayFiToken);
+        amountIn = amountOut;
+        (uint112 dividendLiquidity, uint112 rayFiLiquidity,) = IUniswapV2Pair(
+            IUniswapV2Factory(router.factory()).getPair(address(rayFiToken), address(dividendToken))
+        ).getReserves();
+        amountOut = router.getAmountOut(amountIn, dividendLiquidity, rayFiLiquidity);
+        dividendToken.approve(address(router), amountIn);
+        uint256 rayFiBalanceBefore = rayFiToken.balanceOf(msg.sender);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            amountIn, amountOut, path, msg.sender, block.timestamp
+        );
+        assertEq(rayFiToken.balanceOf(msg.sender), rayFiBalanceBefore + amountOut);
+        vm.stopPrank();
+    }
+
+    function testSwapsTakeFees() public liquidityAdded feesSet {
+        // 1. Test buy fee
+        address[] memory path = new address[](2);
+        path[0] = address(rayFiToken);
+        path[1] = address(dividendToken);
+        uint256 amountIn = TRANSFER_AMOUNT * (10 ** DECIMALS);
+        uint256 feeAmount = amountIn * BUY_FEE / 100;
+        uint256 adjustedAmountIn = amountIn - feeAmount;
+        uint256 amountOut = router.getAmountOut(adjustedAmountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        vm.startPrank(msg.sender);
+        rayFiToken.approve(address(router), amountIn);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            amountIn, amountOut, path, msg.sender, block.timestamp
+        );
+        assertEq(dividendToken.balanceOf(msg.sender), amountOut);
+        assertEq(rayFiToken.balanceOf(FEE_RECEIVER), feeAmount);
+
+        // 2. Test sell fee
+        path[0] = address(dividendToken);
+        path[1] = address(rayFiToken);
+        amountIn = amountOut;
+        (uint112 dividendLiquidity, uint112 rayFiLiquidity,) = IUniswapV2Pair(
+            IUniswapV2Factory(router.factory()).getPair(address(rayFiToken), address(dividendToken))
+        ).getReserves();
+        amountOut = router.getAmountOut(amountIn, dividendLiquidity, rayFiLiquidity);
+        feeAmount = amountOut * SELL_FEE / 100;
+        uint256 adjustedAmountOut = amountOut - feeAmount;
+        dividendToken.approve(address(router), amountIn);
+        uint256 rayFiBalanceBefore = rayFiToken.balanceOf(msg.sender);
+        uint256 feeReceiverRayFiBalanceBefore = rayFiToken.balanceOf(FEE_RECEIVER);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            amountIn, adjustedAmountOut, path, msg.sender, block.timestamp
+        );
+        assertEq(rayFiToken.balanceOf(msg.sender), rayFiBalanceBefore + adjustedAmountOut);
+        assertEq(rayFiToken.balanceOf(FEE_RECEIVER), feeReceiverRayFiBalanceBefore + feeAmount);
+        vm.stopPrank();
     }
 
     ////////////////////

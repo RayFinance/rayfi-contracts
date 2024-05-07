@@ -532,15 +532,14 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to transfer
      */
     function _update(address from, address to, uint256 value) internal override {
-        // Buy order
         if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
+            // Buy order
             uint8 buyFee = s_buyFee;
             if (buyFee >= 1) {
-                value -= _takeFee(to, value, buyFee);
+                value -= _takeFee(from, value, buyFee);
             }
-        }
-        // Sell order
-        else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
+        } else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
+            // Sell order
             uint8 sellFee = s_sellFee;
             if (sellFee >= 1) {
                 value -= _takeFee(from, value, sellFee);
