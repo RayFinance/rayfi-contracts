@@ -172,6 +172,13 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__InsufficientStakedBalance(uint256 stakedAmount, uint256 unstakeAmount);
 
     /**
+     * @notice Indicates a failure in staking tokens due to the input amount being too low
+     * @param tokenAmount The amount of tokens the sender is trying to stake
+     * @param minimumTokenBalance The minimum amount of tokens required to stake
+     */
+    error RayFi__InsufficientTokensToStake(uint256 tokenAmount, uint256 minimumTokenBalance);
+
+    /**
      * @dev Triggered when trying to process dividends, but not enough gas was sent with the transaction
      * @param gasRequested The amount of gas requested
      * @param gasProvided The amount of gas provided
@@ -241,8 +248,15 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to stake
      */
     function stake(uint256 value) external {
-        _update(msg.sender, address(this), value);
+        uint256 minimumTokenBalanceForDividends = s_minimumTokenBalanceForDividends;
+        value += s_stakedBalances[msg.sender];
+        if (value <= minimumTokenBalanceForDividends - 1) {
+            revert RayFi__InsufficientTokensToStake(value, minimumTokenBalanceForDividends);
+        }
+
+        super._update(msg.sender, address(this), value);
         _stake(msg.sender, value);
+        _updateShareholder(msg.sender);
     }
 
     /**
@@ -255,15 +269,9 @@ contract RayFiToken is ERC20, Ownable {
             revert RayFi__InsufficientStakedBalance(stakedBalance, value);
         }
 
-        s_stakedBalances[msg.sender] -= value;
-        if (s_stakedBalances[msg.sender] <= 0) {
-            delete s_stakedBalances[msg.sender];
-        }
-        s_totalStakedAmount -= value;
-
-        _update(address(this), msg.sender, value);
-
-        emit RayFiUnstaked(msg.sender, value, s_totalStakedAmount);
+        _unstake(msg.sender, value);
+        super._update(address(this), msg.sender, value);
+        _updateShareholder(msg.sender);
     }
 
     /**
@@ -548,8 +556,8 @@ contract RayFiToken is ERC20, Ownable {
 
         super._update(from, to, value);
 
-        _updateShareholder(from, balanceOf(from));
-        _updateShareholder(to, balanceOf(to));
+        _updateShareholder(from);
+        _updateShareholder(to);
     }
 
     /**
@@ -562,16 +570,17 @@ contract RayFiToken is ERC20, Ownable {
     function _takeFee(address from, uint256 value, uint8 fee) private returns (uint256 feeAmount) {
         feeAmount = value * fee / 100;
         super._update(from, s_feeReceiver, feeAmount);
-        _updateShareholder(s_feeReceiver, balanceOf(s_feeReceiver));
+        _updateShareholder(s_feeReceiver);
     }
 
     /**
      * @dev Updates the shareholder list based on the new balance
      * @param shareholder The address of the shareholder
-     * @param balance The balance of the shareholder
      */
-    function _updateShareholder(address shareholder, uint256 balance) private {
-        if (balance >= s_minimumTokenBalanceForDividends && !s_isExcludedFromDividends[shareholder]) {
+    function _updateShareholder(address shareholder) private {
+        uint256 balance = balanceOf(shareholder);
+        uint256 totalBalance = balance + s_stakedBalances[shareholder];
+        if (totalBalance >= s_minimumTokenBalanceForDividends && !s_isExcludedFromDividends[shareholder]) {
             uint256 oldBalance = s_shareholders.sharesOf(shareholder);
             if (oldBalance <= 0) {
                 s_totalSharesAmount += balance;
@@ -596,6 +605,18 @@ contract RayFiToken is ERC20, Ownable {
         s_totalStakedAmount += value;
 
         emit RayFiStaked(user, value, s_totalStakedAmount);
+    }
+
+    /**
+     * @dev Low-level function to unstake RayFi tokens
+     * @param user The address of the user to unstake the RayFi tokens for
+     * @param value The amount of RayFi tokens to unstake
+     */
+    function _unstake(address user, uint256 value) private {
+        s_stakedBalances[user] -= value;
+        s_totalStakedAmount -= value;
+
+        emit RayFiUnstaked(user, value, s_totalStakedAmount);
     }
 
     /**

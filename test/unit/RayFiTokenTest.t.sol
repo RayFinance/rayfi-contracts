@@ -21,8 +21,8 @@ contract RayFiTokenTest is Test {
     uint256 public constant MAX_SUPPLY = 10_000_000 * (10 ** DECIMALS);
     uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 * (10 ** DECIMALS);
     uint256 public constant INITIAL_DIVIDEND_LIQUIDITY = 14_739 * (10 ** DECIMALS);
-    uint256 public constant TRANSFER_AMOUNT = 10_000;
-    uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS = 1_000;
+    uint256 public constant TRANSFER_AMOUNT = 10_000 * (10 ** DECIMALS);
+    uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS = 1_000 * (10 ** DECIMALS);
     uint8 public constant BUY_FEE = 4;
     uint8 public constant SELL_FEE = 4;
 
@@ -188,7 +188,7 @@ contract RayFiTokenTest is Test {
         address[] memory path = new address[](2);
         path[0] = address(rayFiToken);
         path[1] = address(dividendToken);
-        uint256 amountIn = TRANSFER_AMOUNT * (10 ** DECIMALS);
+        uint256 amountIn = TRANSFER_AMOUNT;
         uint256 amountOut = router.getAmountOut(amountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
         vm.startPrank(msg.sender);
         rayFiToken.approve(address(router), amountIn);
@@ -219,7 +219,7 @@ contract RayFiTokenTest is Test {
         address[] memory path = new address[](2);
         path[0] = address(rayFiToken);
         path[1] = address(dividendToken);
-        uint256 amountIn = TRANSFER_AMOUNT * (10 ** DECIMALS);
+        uint256 amountIn = TRANSFER_AMOUNT;
         uint256 feeAmount = amountIn * BUY_FEE / 100;
         uint256 adjustedAmountIn = amountIn - feeAmount;
         uint256 amountOut = router.getAmountOut(adjustedAmountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
@@ -250,6 +250,71 @@ contract RayFiTokenTest is Test {
         assertEq(rayFiToken.balanceOf(msg.sender), rayFiBalanceBefore + adjustedAmountOut);
         assertEq(rayFiToken.balanceOf(FEE_RECEIVER), feeReceiverRayFiBalanceBefore + feeAmount);
         vm.stopPrank();
+    }
+
+    /////////////////////
+    // Staking Tests ////
+    /////////////////////
+
+    function testUsersCanStake() public minimumBalanceForDividendsSet {
+        uint256 balanceBefore = rayFiToken.balanceOf(msg.sender);
+        vm.prank(msg.sender);
+        vm.recordLogs();
+        rayFiToken.stake(TRANSFER_AMOUNT);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        assertEq(entries[1].topics[0], keccak256("RayFiStaked(address,uint256,uint256)"));
+        assertEq(entries[1].topics[1], bytes32(uint256(uint160(msg.sender))));
+        assertEq(entries[1].topics[2], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[1].topics[3], bytes32(rayFiToken.getTotalStakedAmount()));
+        assertEq(rayFiToken.getStakedBalanceOf(msg.sender), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
+        assertEq(rayFiToken.balanceOf(address(rayFiToken)), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.getTotalStakedAmount(), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
+    }
+
+    function testStakingRevertsOnInsufficientInput() public minimumBalanceForDividendsSet {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RayFiToken.RayFi__InsufficientTokensToStake.selector, 0, MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS
+            )
+        );
+        rayFiToken.stake(0);
+    }
+
+    function testStakingRevertsOnInsufficientBalance() public minimumBalanceForDividendsSet {
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, address(this), 0, TRANSFER_AMOUNT)
+        );
+        rayFiToken.stake(TRANSFER_AMOUNT);
+    }
+
+    function testUsersCanUnstake() public minimumBalanceForDividendsSet {
+        uint256 balanceBefore = rayFiToken.balanceOf(msg.sender);
+        vm.prank(msg.sender);
+        rayFiToken.stake(TRANSFER_AMOUNT);
+        vm.prank(msg.sender);
+        vm.recordLogs();
+        rayFiToken.unstake(TRANSFER_AMOUNT);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        assertEq(entries[0].topics[0], keccak256("RayFiUnstaked(address,uint256,uint256)"));
+        assertEq(entries[0].topics[1], bytes32(uint256(uint160(msg.sender))));
+        assertEq(entries[0].topics[2], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[0].topics[3], bytes32(rayFiToken.getTotalStakedAmount()));
+        assertEq(rayFiToken.getStakedBalanceOf(msg.sender), 0);
+        assertEq(rayFiToken.balanceOf(msg.sender), balanceBefore);
+        assertEq(rayFiToken.balanceOf(address(rayFiToken)), 0);
+        assertEq(rayFiToken.getTotalStakedAmount(), 0);
+        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), balanceBefore);
+    }
+
+    function testUnstakingRevertsOnInsufficientStakedBalance() public minimumBalanceForDividendsSet {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RayFiToken.RayFi__InsufficientStakedBalance.selector, 0, TRANSFER_AMOUNT
+            )
+        );
+        rayFiToken.unstake(TRANSFER_AMOUNT);
     }
 
     ////////////////////
