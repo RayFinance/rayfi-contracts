@@ -463,11 +463,27 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
+     * @notice Get the minimum token balance required to start earning dividends
+     * @return The minimum token balance for dividends
+     */
+    function getMinimumTokenBalanceForDividends() external view returns (uint256) {
+        return s_minimumTokenBalanceForDividends;
+    }
+
+    /**
      * @notice Returns the total amount of dividends distributed by the contract
      *
      */
     function getTotalDividendsDistributed() external view returns (uint256) {
         return s_totalDividendsDistributed;
+    }
+
+    /**
+     * @notice Get the address of the token that will be distributed as dividends
+     * @return The address of the dividend token
+     */
+    function getDividendToken() external view returns (address) {
+        return s_dividendToken;
     }
 
     /**
