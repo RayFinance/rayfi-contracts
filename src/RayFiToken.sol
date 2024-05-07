@@ -38,6 +38,7 @@ contract RayFiToken is ERC20, Ownable {
     address private s_dividendToken;
     address private s_router;
     address private s_feeReceiver;
+    address private s_dividendReceiver;
 
     uint8 private s_buyFee;
     uint8 private s_sellFee;
@@ -83,6 +84,13 @@ contract RayFiToken is ERC20, Ownable {
      * @param oldFeeReceiver The old fee receiver
      */
     event FeeReceiverUpdated(address indexed newFeeReceiver, address indexed oldFeeReceiver);
+
+    /**
+     * @notice Emitted when the dividend receiver is updated
+     * @param newDividendReceiver The new dividend receiver
+     * @param oldDividendReceiver The old dividend receiver
+     */
+    event DividendReceiverUpdated(address indexed newDividendReceiver, address indexed oldDividendReceiver);
 
     /**
      * @notice Emitted when the dividend token is updated
@@ -193,8 +201,9 @@ contract RayFiToken is ERC20, Ownable {
      * @param dividendToken The address of the token that will be used to distribute dividends
      * @param router The address of the router that will be used to reinvest dividends
      * @param feeReceiver The address of the contract that will track dividends
+     * @param dividendReceiver The address of the wallet that will distribute swapped dividends
      */
-    constructor(address dividendToken, address router, address feeReceiver)
+    constructor(address dividendToken, address router, address feeReceiver, address dividendReceiver)
         ERC20("RayFi", "RAYFI")
         Ownable(msg.sender)
     {
@@ -205,7 +214,8 @@ contract RayFiToken is ERC20, Ownable {
         s_dividendToken = dividendToken;
         s_router = router;
         s_feeReceiver = feeReceiver;
-        s_isFeeExempt[feeReceiver] = true;
+        s_dividendReceiver = dividendReceiver;
+        s_isFeeExempt[dividendReceiver] = true;
 
         _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
     }
@@ -381,6 +391,19 @@ contract RayFiToken is ERC20, Ownable {
         emit FeeReceiverUpdated(newFeeReceiver, oldFeeReceiver);
     }
 
+    /**
+     * @notice Sets the address of the wallet that will receive swapped dividends
+     * @param newDividendReceiver The address of the new dividend receiver
+     */
+    function setDividendReceiver(address newDividendReceiver) external onlyOwner {
+        if (newDividendReceiver == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
+        }
+        address oldDividendReceiver = s_dividendReceiver;
+        s_dividendReceiver = newDividendReceiver;
+        emit DividendReceiverUpdated(newDividendReceiver, oldDividendReceiver);
+    }
+
     ////////////////////////////////
     // External View Functions    //
     ////////////////////////////////
@@ -457,18 +480,14 @@ contract RayFiToken is ERC20, Ownable {
         if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
             uint8 buyFee = s_buyFee;
             if (buyFee >= 1) {
-                uint256 fee = value * buyFee / 100;
-                value -= fee;
-                super._update(from, s_feeReceiver, fee);
+                value -= _takeFee(to, value, buyFee);
             }
         }
         // Sell order
         else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
             uint8 sellFee = s_sellFee;
             if (sellFee >= 1) {
-                uint256 fee = value * sellFee / 100;
-                value -= fee;
-                super._update(from, s_feeReceiver, fee);
+                value -= _takeFee(from, value, sellFee);
             }
         }
 
@@ -476,6 +495,19 @@ contract RayFiToken is ERC20, Ownable {
 
         _updateShareholder(from, balanceOf(from));
         _updateShareholder(to, balanceOf(to));
+    }
+
+    /**
+     * @dev Takes a fee from the transaction and updates the dividend tracker
+     * @param from The address of the sender
+     * @param value The amount of tokens to take the fee from
+     * @param fee The fee percentage to take
+     * @return feeAmount The amount of the fee
+     */
+    function _takeFee(address from, uint256 value, uint8 fee) private returns (uint256 feeAmount) {
+        feeAmount = value * fee / 100;
+        super._update(from, s_feeReceiver, feeAmount);
+        _updateShareholder(s_feeReceiver, balanceOf(s_feeReceiver));
     }
 
     /**
@@ -513,6 +545,8 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @dev Low-level function to swap dividends for RayFi tokens
+     * We have to send the output of the swap to a separate wallet `s_dividendReceiver`
+     * This is because V2 pools disallow setting the recipient of a swap as one of the tokens being swapped
      * @param amount The amount of dividends to swap
      */
     function _swapDividendsForRayFi(uint256 amount) private {
@@ -527,7 +561,7 @@ contract RayFiToken is ERC20, Ownable {
                 amount,
                 0,
                 path,
-                address(this),
+                s_dividendReceiver,
                 block.timestamp
             )
         );
@@ -658,6 +692,7 @@ contract RayFiToken is ERC20, Ownable {
             emit DividendsWithdrawn(user, earnedDividend);
         }
         if (earnedRayFi >= 1) {
+            super._update(s_dividendReceiver, address(this), earnedRayFi);
             _stake(user, earnedRayFi);
 
             emit DividendsReinvested(user, earnedRayFi);
@@ -694,6 +729,7 @@ contract RayFiToken is ERC20, Ownable {
         if (earnedRayFi >= 1) {
             s_shareholdersSnapshots[lastShareholderSnapshotIndex].addReinvestedRayFi(user, earnedRayFi);
 
+            super._update(s_dividendReceiver, address(this), earnedRayFi);
             _stake(user, earnedRayFi);
 
             emit DividendsReinvested(user, earnedRayFi);
