@@ -80,6 +80,53 @@ contract RayFiTokenTest is Test {
         assertEq(rayFiToken.getFeeReceiver(), FEE_RECEIVER);
     }
 
+    //////////////////////
+    // Transfer Tests ////
+    //////////////////////
+
+    function testTransferWorks() public {
+        vm.startPrank(msg.sender);
+        rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
+        vm.stopPrank();
+
+        assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT);
+    }
+
+    function testTransferFromWorks() public {
+        vm.startPrank(msg.sender);
+        rayFiToken.approve(address(this), TRANSFER_AMOUNT);
+        vm.stopPrank();
+
+        rayFiToken.transferFrom(msg.sender, address(this), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT);
+    }
+
+    function testTransferRevertsWhenInsufficientBalance() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, address(this), 0, TRANSFER_AMOUNT)
+        );
+        rayFiToken.transfer(DUMMY_ADDRESS, TRANSFER_AMOUNT);
+    }
+
+    function testTransferFromRevertsWhenInsufficientAllowance() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(this), 0, TRANSFER_AMOUNT)
+        );
+        rayFiToken.transferFrom(msg.sender, DUMMY_ADDRESS, TRANSFER_AMOUNT);
+    }
+
+    function testTransferRevertsWhenInvalidSender() public {
+        vm.startPrank(address(0));
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidSender.selector, address(0)));
+        rayFiToken.transfer(DUMMY_ADDRESS, TRANSFER_AMOUNT);
+        vm.stopPrank();
+    }
+
+    function testTransferRevertsWhenInvalidReceiver() public {
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
+        rayFiToken.transfer(address(0), TRANSFER_AMOUNT);
+    }
+
     ////////////////////
     // Setter Tests ////
     ////////////////////

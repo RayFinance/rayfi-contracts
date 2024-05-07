@@ -22,7 +22,9 @@ contract Invariants is StdInvariant, Test {
         rayFiToken.getShareholders();
         rayFiToken.getStakedBalanceOf(msg.sender);
         rayFiToken.getTotalStakedAmount();
+        rayFiToken.getMinimumTokenBalanceForDividends();
         rayFiToken.getTotalDividendsDistributed();
+        rayFiToken.getDividendToken();
         rayFiToken.getFeeReceiver();
         rayFiToken.getBuyFee();
         rayFiToken.getSellFee();
