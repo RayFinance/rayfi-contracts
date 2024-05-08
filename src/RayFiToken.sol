@@ -201,13 +201,6 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__InsufficientGas(uint256 gasRequested, uint256 gasProvided);
 
     /**
-     * @dev Triggered when trying to process dividends without saving progress, but the distribution could not complete
-     * @param shareholderCount The total number of shareholders
-     * @param lastProcessedIndex The index of the last processed shareholder
-     */
-    error RayFi__StateLessDistributionCouldNotComplete(uint256 shareholderCount, uint256 lastProcessedIndex);
-
-    /**
      * @dev Triggered when trying to process dividends, but there are no shareholders
      */
     error RayFi__ZeroShareholders();
@@ -695,74 +688,52 @@ contract RayFiToken is ERC20, Ownable {
         uint256 magnifiedRayFiPerShare,
         bool isStateful
     ) private {
-        uint256 startingGas = gasleft();
-        if (startingGas <= gasForDividends - 1) {
-            revert RayFi__InsufficientGas(gasForDividends, startingGas);
-        }
-
-        uint256 shareholderCount = s_shareholders.length();
-        if (shareholderCount <= 0) {
-            revert RayFi__ZeroShareholders();
-        }
-
-        if (isStateful) {
+                uint256 shareholderCount = s_shareholders.length();
+                if (isStateful) {
             _runDividendLoopStateFul(
-                gasForDividends, startingGas, shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare
+                gasForDividends, shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare
             );
         } else {
-            _runDividendLoopStateLess(
-                gasForDividends, startingGas, shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare
-            );
+            _runDividendLoopStateLess(shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare);
         }
     }
 
     /**
      * @dev Low-level function to run the dividend distribution loop in a stateless manner
-     * @param gasForDividends The amount of gas to use for processing dividends
-     * @param startingGas The amount of gas at the start of the function
-     * @param shareholderCount The total number of shareholders
+          * @param shareholderCount The total number of shareholders
      * @param magnifiedDividendPerShare The magnified dividend amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
     function _runDividendLoopStateLess(
-        uint256 gasForDividends,
-        uint256 startingGas,
-        uint256 shareholderCount,
+                uint256 shareholderCount,
         uint256 magnifiedDividendPerShare,
         uint256 magnifiedRayFiPerShare
     ) private {
-        uint256 lastProcessedIndex;
-        uint256 gasUsed;
-        while (gasUsed <= gasForDividends - 1) {
+        for (uint256 i; i < shareholderCount; ++i) {
             _processDividendOfUserStateLess(
-                s_shareholders.shareholderAt(lastProcessedIndex), magnifiedDividendPerShare, magnifiedRayFiPerShare
+                s_shareholders.shareholderAt(i), magnifiedDividendPerShare, magnifiedRayFiPerShare
             );
-
-            lastProcessedIndex++;
-            if (lastProcessedIndex >= shareholderCount) {
-                return;
             }
-
-            gasUsed += startingGas - gasleft();
-        }
-        revert RayFi__StateLessDistributionCouldNotComplete(shareholderCount, lastProcessedIndex);
     }
 
     /**
      * @dev Low-level function to run the dividend distribution loop in a stateful manner
      * @param gasForDividends The amount of gas to use for processing dividends
-     * @param startingGas The amount of gas at the start of the function
-     * @param shareholderCount The total number of shareholders
+          * @param shareholderCount The total number of shareholders
      * @param magnifiedDividendPerShare The magnified dividend amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
     function _runDividendLoopStateFul(
         uint256 gasForDividends,
-        uint256 startingGas,
-        uint256 shareholderCount,
+                uint256 shareholderCount,
         uint256 magnifiedDividendPerShare,
         uint256 magnifiedRayFiPerShare
     ) private {
+uint256 startingGas = gasleft();
+        if (gasForDividends >= startingGas) {
+            revert RayFi__InsufficientGas(gasForDividends, startingGas);
+        }
+
         uint256 lastProcessedIndex = s_lastProcessedIndex;
         uint256 gasUsed;
         while (gasUsed < gasForDividends) {
