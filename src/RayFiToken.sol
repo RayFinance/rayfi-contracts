@@ -610,14 +610,14 @@ contract RayFiToken is ERC20, Ownable {
         if (totalBalance >= s_minimumTokenBalanceForDividends && !s_isExcludedFromDividends[shareholder]) {
             uint256 oldBalance = s_shareholders.sharesOf(shareholder);
             if (oldBalance <= 0) {
-                s_totalSharesAmount += balance;
+                s_totalSharesAmount += totalBalance;
             } else {
-                s_totalSharesAmount = s_totalSharesAmount - oldBalance + balance;
+                s_totalSharesAmount = s_totalSharesAmount - oldBalance + totalBalance;
             }
             s_shareholders.add(shareholder, balance);
         } else {
             s_shareholders.remove(shareholder);
-            s_totalSharesAmount -= balance;
+            s_totalSharesAmount -= totalBalance;
         }
     }
 
