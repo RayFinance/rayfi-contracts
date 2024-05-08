@@ -265,7 +265,7 @@ contract RayFiToken is ERC20, Ownable {
     function stake(uint256 value) external {
         uint256 minimumTokenBalanceForDividends = s_minimumTokenBalanceForDividends;
         value += s_stakedBalances[msg.sender];
-        if (value <= minimumTokenBalanceForDividends - 1) {
+        if (minimumTokenBalanceForDividends >= value + 1) {
             revert RayFi__InsufficientTokensToStake(value, minimumTokenBalanceForDividends);
         }
 
@@ -280,7 +280,7 @@ contract RayFiToken is ERC20, Ownable {
      */
     function unstake(uint256 value) external {
         uint256 stakedBalance = s_stakedBalances[msg.sender];
-        if (stakedBalance <= value - 1) {
+        if (value >= stakedBalance + 1) {
             revert RayFi__InsufficientStakedBalance(stakedBalance, value);
         }
 
@@ -655,15 +655,17 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @dev Low-level function to swap dividends for RayFi tokens
-     * We have to send the output of the swap to a separate wallet `s_dividendReceiver`
+     * We have to send the output of the swap to a separate wallet `dividendReceiver`
      * This is because V2 pools disallow setting the recipient of a swap as one of the tokens being swapped
+* @param dividendReceiver The address of the wallet that will receive the swapped dividends
      * @param amount The amount of dividends to swap
      */
-    function _swapDividendsForRayFi(uint256 amount) private {
-        ERC20(s_dividendToken).approve(address(s_router), amount);
+    function _swapDividendsForRayFi(address dividendReceiver, uint256 amount) private {
+        address dividendToken = s_dividendToken;
+        ERC20(dividendToken).approve(address(s_router), amount);
 
         address[] memory path = new address[](2);
-        path[0] = s_dividendToken;
+        path[0] = dividendToken;
         path[1] = address(this);
         (bool success,) = s_router.call(
             abi.encodeWithSignature(
@@ -671,7 +673,7 @@ contract RayFiToken is ERC20, Ownable {
                 amount,
                 0,
                 path,
-                s_dividendReceiver,
+                dividendReceiver,
                 block.timestamp
             )
         );
@@ -763,12 +765,12 @@ contract RayFiToken is ERC20, Ownable {
     ) private {
         uint256 lastProcessedIndex = s_lastProcessedIndex;
         uint256 gasUsed;
-        while (gasUsed <= gasForDividends - 1) {
+        while (gasUsed < gasForDividends) {
             _processDividendOfUserStateFul(
                 s_shareholders.shareholderAt(lastProcessedIndex), magnifiedDividendPerShare, magnifiedRayFiPerShare
             );
 
-            lastProcessedIndex++;
+            ++lastProcessedIndex;
             if (lastProcessedIndex >= shareholderCount) {
                 delete lastProcessedIndex;
                 delete s_magnifiedDividendPerShare;
@@ -853,7 +855,8 @@ contract RayFiToken is ERC20, Ownable {
     function _snapshotShareholders() private {
         RayFiLibrary.ShareholderSet storage s_lastShareholderSnapshot = s_shareholdersSnapshots.push();
         address[] memory shareholders = s_shareholders.shareholders();
-        for (uint256 i = 0; i <= shareholders.length - 1; i++) {
+        uint256 shareholderLength = shareholders.length;
+        for (uint256 i = 0; i < shareholderLength; ++i) {
             address shareholder = shareholders[i];
             s_lastShareholderSnapshot.add(shareholder, s_shareholders.sharesOf(shareholder));
             s_lastShareholderSnapshot.addStakedShares(shareholder, s_stakedBalances[shareholder]);
