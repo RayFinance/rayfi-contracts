@@ -23,6 +23,8 @@ contract RayFiTokenTest is Test {
     uint256 public constant INITIAL_DIVIDEND_LIQUIDITY = 14_739 * (10 ** DECIMALS);
     uint256 public constant TRANSFER_AMOUNT = 10_000 * (10 ** DECIMALS);
     uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS = 1_000 * (10 ** DECIMALS);
+    uint256 public constant GAS_FOR_DIVIDENDS = 1_000_000;
+    uint8 public constant ACCEPTED_PRECISION_LOSS = 1;
     uint8 public constant BUY_FEE = 4;
     uint8 public constant SELL_FEE = 4;
 
@@ -32,6 +34,11 @@ contract RayFiTokenTest is Test {
     address FEE_RECEIVER = makeAddr("feeReceiver");
     address DIVIDEND_RECEIVER = makeAddr("dividendReceiver");
     address DUMMY_ADDRESS = makeAddr("dummy");
+
+    address ALICE = makeAddr("alice");
+    address BOB = makeAddr("bob");
+    address CHARLIE = makeAddr("charlie");
+    address DANIEL = makeAddr("daniel");
 
     function setUp() external {
         DeployRayFiToken deployRayFiToken = new DeployRayFiToken();
@@ -56,9 +63,9 @@ contract RayFiTokenTest is Test {
             block.timestamp
         );
 
-        rayFiToken.setAutomatedMarketPair(
-            IUniswapV2Factory(router.factory()).getPair(address(rayFiToken), address(dividendToken)), true
-        );
+        address pair = IUniswapV2Factory(router.factory()).getPair(address(rayFiToken), address(dividendToken));
+        rayFiToken.setAutomatedMarketPair(pair, true);
+        rayFiToken.setIsExcludedFromDividends(pair, true);
         vm.stopPrank();
         _;
     }
@@ -310,11 +317,178 @@ contract RayFiTokenTest is Test {
 
     function testUnstakingRevertsOnInsufficientStakedBalance() public minimumBalanceForDividendsSet {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                RayFiToken.RayFi__InsufficientStakedBalance.selector, 0, TRANSFER_AMOUNT
-            )
+            abi.encodeWithSelector(RayFiToken.RayFi__InsufficientStakedBalance.selector, 0, TRANSFER_AMOUNT)
         );
         rayFiToken.unstake(TRANSFER_AMOUNT);
+    }
+
+    //////////////////////
+    // Dividend Tests ////
+    //////////////////////
+
+    function testStatelessDistributionWorksForMultipleUsers() public minimumBalanceForDividendsSet {
+        dividendToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        dividendToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        uint256 balance = rayFiToken.balanceOf(msg.sender);
+        address[4] memory users = [ALICE, BOB, CHARLIE, DANIEL];
+        for (uint256 i; i < 4; ++i) {
+            rayFiToken.transfer(users[i], balance / 5);
+        }
+        rayFiToken.distributeDividends(0, false);
+        vm.stopPrank();
+        for (uint256 i; i < 4; ++i) {
+            assert(dividendToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / 5 - ACCEPTED_PRECISION_LOSS);
+        }
+        assert(dividendToken.balanceOf(msg.sender) >= TRANSFER_AMOUNT / 5 - ACCEPTED_PRECISION_LOSS);
+    }
+
+    function testStatelessDistributionEmitsEvents() public {
+        dividendToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        dividendToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        vm.recordLogs();
+        rayFiToken.distributeDividends(0, false);
+        vm.stopPrank();
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        assertEq(entries[1].topics[0], keccak256("DividendsWithdrawn(address,uint256)"));
+        assertEq(entries[1].topics[1], bytes32(uint256(uint160(msg.sender))));
+        assert(uint256(entries[1].topics[2]) >= TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS);
+        assertEq(entries[2].topics[0], keccak256("DividendsDistributed(uint256,uint256)"));
+        assertEq(entries[2].topics[1], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[2].topics[2], bytes32(TRANSFER_AMOUNT));
+    }
+
+    function testStatelessReinvestmentWorksForMultipleUsers() public liquidityAdded minimumBalanceForDividendsSet {
+        dividendToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        dividendToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        uint256 balance = rayFiToken.balanceOf(msg.sender);
+        address[4] memory users = [ALICE, BOB, CHARLIE, DANIEL];
+        for (uint256 i; i < 4; ++i) {
+            rayFiToken.transfer(users[i], balance / 5);
+        }
+        rayFiToken.stake(rayFiToken.balanceOf(msg.sender));
+        vm.stopPrank();
+
+        for (uint256 i; i < 4; ++i) {
+            vm.startPrank(users[i]);
+            rayFiToken.stake(rayFiToken.balanceOf(users[i]));
+            vm.stopPrank();
+        }
+
+        uint256[4] memory stakedBalancesBefore;
+        for (uint256 i; i < 4; ++i) {
+            stakedBalancesBefore[i] = rayFiToken.getStakedBalanceOf(users[i]);
+        }
+        uint256 stakedBalanceBeforeOwner = rayFiToken.getStakedBalanceOf(msg.sender);
+
+        vm.prank(msg.sender);
+        rayFiToken.distributeDividends(0, false);
+
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        for (uint256 i; i < 4; ++i) {
+            assert(
+                rayFiToken.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOut / 5 - ACCEPTED_PRECISION_LOSS
+            );
+        }
+        assert(
+            rayFiToken.getStakedBalanceOf(msg.sender)
+                >= stakedBalanceBeforeOwner + amountOut / 5 - ACCEPTED_PRECISION_LOSS
+        );
+    }
+
+    function testStatelessReinvestmentEmitsEvents() public liquidityAdded {
+        dividendToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        dividendToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        rayFiToken.stake(rayFiToken.balanceOf(msg.sender));
+        vm.recordLogs();
+        rayFiToken.distributeDividends(0, false);
+        vm.stopPrank();
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        assertEq(entries[6].topics[0], keccak256("RayFiStaked(address,uint256,uint256)"));
+        assertEq(entries[6].topics[1], bytes32(uint256(uint160(msg.sender))));
+        assert(uint256(entries[6].topics[2]) >= TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS);
+        assertEq(entries[6].topics[3], bytes32(rayFiToken.getTotalStakedAmount()));
+
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        assertEq(entries[7].topics[0], keccak256("DividendsReinvested(address,uint256)"));
+        assertEq(entries[7].topics[1], bytes32(uint256(uint160(msg.sender))));
+        assert(uint256(entries[7].topics[2]) >= amountOut - ACCEPTED_PRECISION_LOSS);
+
+        assertEq(entries[8].topics[0], keccak256("DividendsDistributed(uint256,uint256)"));
+        assertEq(entries[8].topics[1], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[8].topics[2], bytes32(TRANSFER_AMOUNT));
+    }
+
+    function testStatelessDistributionAndReinvestmentWorksForMultipleUsers()
+        public
+        liquidityAdded
+        minimumBalanceForDividendsSet
+    {
+        dividendToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        dividendToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        uint256 balance = rayFiToken.balanceOf(msg.sender);
+        address[4] memory users = [ALICE, BOB, CHARLIE, DANIEL];
+        for (uint256 i; i < 4; ++i) {
+            rayFiToken.transfer(users[i], balance / 5);
+        }
+        rayFiToken.stake(rayFiToken.balanceOf(msg.sender));
+        vm.stopPrank();
+
+        for (uint256 i; i < 4; ++i) {
+            vm.startPrank(users[i]);
+            rayFiToken.stake(rayFiToken.balanceOf(users[i]) / 2);
+            vm.stopPrank();
+        }
+
+        uint256[4] memory stakedBalancesBefore;
+        for (uint256 i; i < 4; ++i) {
+            stakedBalancesBefore[i] = rayFiToken.getStakedBalanceOf(users[i]);
+        }
+        uint256 stakedBalanceBeforeOwner = rayFiToken.getStakedBalanceOf(msg.sender);
+
+        vm.prank(msg.sender);
+        rayFiToken.distributeDividends(0, false);
+
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        for (uint256 i; i < 4; ++i) {
+            assert(
+                rayFiToken.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOut / 10 - ACCEPTED_PRECISION_LOSS
+            );
+        }
+        for (uint256 i; i < 4; ++i) {
+            assert(dividendToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / 10 - ACCEPTED_PRECISION_LOSS);
+        }
+        assert(
+            rayFiToken.getStakedBalanceOf(msg.sender)
+                >= stakedBalanceBeforeOwner + amountOut / 5 - ACCEPTED_PRECISION_LOSS
+        );
+    }
+
+    function testDistributionRevertsOnZeroDividendBalance() public {
+        vm.startPrank(msg.sender);
+        vm.expectRevert(RayFiToken.RayFi__NothingToDistribute.selector);
+        rayFiToken.distributeDividends(0, false);
+    }
+
+    function testDistributionRevertsOnZeroShareholders() public {
+        dividendToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        dividendToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        rayFiToken.setIsExcludedFromDividends(msg.sender, true);
+        vm.expectRevert(RayFiToken.RayFi__ZeroShareholders.selector);
+        rayFiToken.distributeDividends(0, false);
+        vm.stopPrank();
+    }
+
+    function testOnlyOwnerCanStartDistribution() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        rayFiToken.distributeDividends(0, false);
     }
 
     ////////////////////
