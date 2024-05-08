@@ -619,7 +619,7 @@ contract RayFiToken is ERC20, Ownable {
             if (oldBalance <= 0) {
                 s_totalSharesAmount += totalBalance;
             } else {
-                s_totalSharesAmount = s_totalSharesAmount - oldBalance + totalBalance;
+                s_totalSharesAmount = s_totalSharesAmount + totalBalance - oldBalance;
             }
             s_shareholders.add(shareholder, balance);
         } else {
