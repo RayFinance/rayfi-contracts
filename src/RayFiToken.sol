@@ -292,6 +292,11 @@ contract RayFiToken is ERC20, Ownable {
      * With a well-chosen `MAGNITUDE`, this amount (de-magnified) can be less than 1 wei
      * We can actually keep track of the undistributed stablecoins for the next distribution,
      * but keeping track of such data on-chain costs much more than the saved stablecoins, so we do not do that
+     * @param gasForDividends The amount of gas to use for processing dividends in a stateful
+     * This is a safety mechanism to prevent the contract from running out of gas at an inconvenient time
+     * `gasForDividends` should be set to a value that is less than the gas limit of the transaction
+     * This parameter is ignored in stateless mode
+     * @param isStateful Whether to save the state of the distribution to resume it later
      */
     function distributeDividends(uint256 gasForDividends, bool isStateful) external onlyOwner {
         uint256 totalUnclaimedDividends = ERC20(s_dividendToken).balanceOf(address(this));
@@ -303,15 +308,15 @@ contract RayFiToken is ERC20, Ownable {
         uint256 totalStakedRayFi = s_totalStakedAmount;
         if (totalStakedRayFi >= 1) {
             uint256 dividendsToReinvest = totalUnclaimedDividends * totalStakedRayFi / totalSharesAmount;
-            uint256 rayFiBalanceBefore = balanceOf(address(this));
+            address dividendReceiver = s_dividendReceiver;
+            _swapDividendsForRayFi(dividendReceiver, dividendsToReinvest);
 
-            _swapDividendsForRayFi(dividendsToReinvest);
-
-            uint256 rayFiToDistribute = balanceOf(address(this)) - rayFiBalanceBefore;
+            uint256 rayFiToDistribute = balanceOf(dividendReceiver);
             uint256 dividendsToDistribute = totalUnclaimedDividends - dividendsToReinvest;
 
+            uint256 totalNonStakedRayFi = totalSharesAmount - totalStakedRayFi;
             uint256 magnifiedDividendPerShare =
-                _calculateDividendPerShare(dividendsToDistribute, totalSharesAmount - totalStakedRayFi);
+                totalNonStakedRayFi > 0 ? _calculateDividendPerShare(dividendsToDistribute, totalNonStakedRayFi) : 0;
             uint256 magnifiedRayFiPerShare = _calculateDividendPerShare(rayFiToDistribute, totalStakedRayFi);
 
             if (isStateful) {
@@ -330,7 +335,7 @@ contract RayFiToken is ERC20, Ownable {
             }
 
             _processDividends(gasForDividends, magnifiedDividendPerShare, magnifiedRayFiPerShare, isStateful);
-        } else {
+        } else if (totalSharesAmount >= 1) {
             uint256 magnifiedDividendPerShare = _calculateDividendPerShare(totalUnclaimedDividends, totalSharesAmount);
 
             if (isStateful) {
@@ -346,6 +351,8 @@ contract RayFiToken is ERC20, Ownable {
             }
 
             _processDividends(gasForDividends, magnifiedDividendPerShare, 0, isStateful);
+        } else {
+            revert RayFi__ZeroShareholders();
         }
 
         s_totalDividendsDistributed += totalUnclaimedDividends;
@@ -650,7 +657,7 @@ contract RayFiToken is ERC20, Ownable {
      * @dev Low-level function to swap dividends for RayFi tokens
      * We have to send the output of the swap to a separate wallet `dividendReceiver`
      * This is because V2 pools disallow setting the recipient of a swap as one of the tokens being swapped
-* @param dividendReceiver The address of the wallet that will receive the swapped dividends
+     * @param dividendReceiver The address of the wallet that will receive the swapped dividends
      * @param amount The amount of dividends to swap
      */
     function _swapDividendsForRayFi(address dividendReceiver, uint256 amount) private {
@@ -688,8 +695,8 @@ contract RayFiToken is ERC20, Ownable {
         uint256 magnifiedRayFiPerShare,
         bool isStateful
     ) private {
-                uint256 shareholderCount = s_shareholders.length();
-                if (isStateful) {
+        uint256 shareholderCount = s_shareholders.length();
+        if (isStateful) {
             _runDividendLoopStateFul(
                 gasForDividends, shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare
             );
@@ -700,12 +707,12 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @dev Low-level function to run the dividend distribution loop in a stateless manner
-          * @param shareholderCount The total number of shareholders
+     * @param shareholderCount The total number of shareholders
      * @param magnifiedDividendPerShare The magnified dividend amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
     function _runDividendLoopStateLess(
-                uint256 shareholderCount,
+        uint256 shareholderCount,
         uint256 magnifiedDividendPerShare,
         uint256 magnifiedRayFiPerShare
     ) private {
@@ -713,23 +720,23 @@ contract RayFiToken is ERC20, Ownable {
             _processDividendOfUserStateLess(
                 s_shareholders.shareholderAt(i), magnifiedDividendPerShare, magnifiedRayFiPerShare
             );
-            }
+        }
     }
 
     /**
      * @dev Low-level function to run the dividend distribution loop in a stateful manner
      * @param gasForDividends The amount of gas to use for processing dividends
-          * @param shareholderCount The total number of shareholders
+     * @param shareholderCount The total number of shareholders
      * @param magnifiedDividendPerShare The magnified dividend amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
     function _runDividendLoopStateFul(
         uint256 gasForDividends,
-                uint256 shareholderCount,
+        uint256 shareholderCount,
         uint256 magnifiedDividendPerShare,
         uint256 magnifiedRayFiPerShare
     ) private {
-uint256 startingGas = gasleft();
+        uint256 startingGas = gasleft();
         if (gasForDividends >= startingGas) {
             revert RayFi__InsufficientGas(gasForDividends, startingGas);
         }
