@@ -159,6 +159,13 @@ contract RayFiToken is ERC20, Ownable {
     // Errors       //
     //////////////////
 
+    /**
+     * @notice Triggered when trying to send RayFi tokens to this contract
+     * Users should call the `stake` function to stake their RayFi tokens
+     * @dev Sending RayFi tokens to the contract is not allowed to prevent accidental staking
+     * This also simplifies dividend tracking and distribution logic
+     */
+    error RayFi__CannotManuallySendRayFiTokensToTheContract();
 
     /**
      * @dev Triggered when attempting to set the zero address as a contract parameter
@@ -563,6 +570,10 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to transfer
      */
     function _update(address from, address to, uint256 value) internal override {
+        if (to == address(this)) {
+            revert RayFi__CannotManuallySendRayFiTokensToTheContract();
+        }
+
         if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
             // Buy order
             uint8 buyFee = s_buyFee;
