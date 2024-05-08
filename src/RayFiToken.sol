@@ -128,6 +128,13 @@ contract RayFiToken is ERC20, Ownable {
     event MinimumTokenBalanceForDividendsUpdated(uint256 indexed newMinimum, uint256 indexed oldMinimum);
 
     /**
+     * @notice Emitted when a user is marked as excluded from dividends
+     * @param user The address of the user
+     * @param isExcluded Whether the user is excluded from dividends
+     */
+    event IsUserExcludedFromDividendsUpdated(address indexed user, bool indexed isExcluded);
+
+    /**
      * @notice Emitted when dividends are distributed
      * @param lastDistribution The amount of dividends that were distributed in the last distribution
      * @param totalDividendsDistributed The total dividends that have been distributed
@@ -151,6 +158,7 @@ contract RayFiToken is ERC20, Ownable {
     //////////////////
     // Errors       //
     //////////////////
+
 
     /**
      * @dev Triggered when attempting to set the zero address as a contract parameter
@@ -383,8 +391,23 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
+     * @notice Sets whether an address is excluded from dividends
+     * @param user The address to update
+     * @param isExcluded Whether the address is excluded from dividends
+     */
+    function setIsExcludedFromDividends(address user, bool isExcluded) external onlyOwner {
+        s_isExcludedFromDividends[user] = isExcluded;
+        if (s_shareholders.contains(user)) {
+            s_shareholders.remove(user);
+            s_totalSharesAmount -= balanceOf(user);
+        }
+        emit IsUserExcludedFromDividendsUpdated(user, isExcluded);
+    }
+
+    /**
      * @notice Sets whether an address is exempt from fees
      * @param user The address to update
+     * @param isExempt Whether the address is exempt from fees
      */
     function setFeeExempt(address user, bool isExempt) external onlyOwner {
         s_isFeeExempt[user] = isExempt;
