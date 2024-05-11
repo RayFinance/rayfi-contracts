@@ -5,7 +5,7 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {DeployRayFiToken} from "../../script/DeployRayFiToken.s.sol";
-import {RayFiToken, Ownable} from "../../src/RayFiToken.sol";
+import {RayFiToken, Ownable, EnumerableMap} from "../../src/RayFiToken.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
@@ -157,7 +157,8 @@ contract RayFiTokenTest is Test {
         assertEq(shareholders.length, 1);
         assertEq(shareholders[0], msg.sender);
         assertEq(rayFiToken.getSharesBalanceOf(msg.sender), MAX_SUPPLY);
-        assertEq(rayFiToken.getSharesBalanceOf(address(this)), 0);
+        vm.expectRevert(abi.encodeWithSelector(EnumerableMap.EnumerableMapNonexistentKey.selector, address(this)));
+        rayFiToken.getSharesBalanceOf(address(this));
     }
 
     function testTransferRevertsWhenInsufficientBalance() public {
@@ -351,12 +352,9 @@ contract RayFiTokenTest is Test {
         rayFiToken.distributeDividends(0, false);
         vm.stopPrank();
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        assertEq(entries[1].topics[0], keccak256("DividendsWithdrawn(address,uint256)"));
-        assertEq(entries[1].topics[1], bytes32(uint256(uint160(msg.sender))));
-        assert(uint256(entries[1].topics[2]) >= TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS);
-        assertEq(entries[2].topics[0], keccak256("DividendsDistributed(uint256,uint256)"));
-        assertEq(entries[2].topics[1], bytes32(TRANSFER_AMOUNT));
-        assertEq(entries[2].topics[2], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[1].topics[0], keccak256("DividendsDistributed(uint256,uint256)"));
+        assert(entries[1].topics[1] >= bytes32(TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS));
+        assertEq(entries[1].topics[2], 0);
     }
 
     function testStatelessReinvestmentWorksForMultipleUsers() public liquidityAdded minimumBalanceForDividendsSet {
@@ -408,19 +406,15 @@ contract RayFiTokenTest is Test {
         rayFiToken.distributeDividends(0, false);
         vm.stopPrank();
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        assertEq(entries[6].topics[0], keccak256("RayFiStaked(address,uint256,uint256)"));
-        assertEq(entries[6].topics[1], bytes32(uint256(uint160(msg.sender))));
-        assert(uint256(entries[6].topics[2]) >= TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS);
-        assertEq(entries[6].topics[3], bytes32(rayFiToken.getTotalStakedAmount()));
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_DIVIDEND_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        // assertEq(entries[5].topics[0], keccak256("RayFiStaked(address,uint256,uint256)"));
+        // assertEq(entries[5].topics[1], bytes32(uint256(uint160(msg.sender))));
+        // assert(uint256(entries[5].topics[2]) >= TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS);
+        // assertEq(entries[5].topics[3], bytes32(rayFiToken.getTotalStakedAmount()));
 
-        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
-        assertEq(entries[7].topics[0], keccak256("DividendsReinvested(address,uint256)"));
-        assertEq(entries[7].topics[1], bytes32(uint256(uint160(msg.sender))));
-        assert(uint256(entries[7].topics[2]) >= amountOut - ACCEPTED_PRECISION_LOSS);
-
-        assertEq(entries[8].topics[0], keccak256("DividendsDistributed(uint256,uint256)"));
-        assertEq(entries[8].topics[1], bytes32(TRANSFER_AMOUNT));
-        assertEq(entries[8].topics[2], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[6].topics[0], keccak256("DividendsDistributed(uint256,uint256)"));
+        assertEq(entries[6].topics[1], 0);
+        assert(entries[6].topics[2] >= bytes32(amountOut - ACCEPTED_PRECISION_LOSS));
     }
 
     function testStatelessDistributionAndReinvestmentWorksForMultipleUsers()

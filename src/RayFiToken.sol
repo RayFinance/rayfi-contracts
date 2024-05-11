@@ -137,10 +137,10 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice Emitted when dividends are distributed
-     * @param lastDistribution The amount of dividends that were distributed in the last distribution
-     * @param totalDividendsDistributed The total dividends that have been distributed
+     * @param totalDividendsWithdrawn The amount of dividends that were airdropped to users
+     * @param totalRayFiStaked The amount of RayFi that was staked after reinvesting dividends
      */
-    event DividendsDistributed(uint256 indexed lastDistribution, uint256 indexed totalDividendsDistributed);
+    event DividendsDistributed(uint256 indexed totalDividendsWithdrawn, uint256 indexed totalRayFiStaked);
 
     /**
      * @notice Emitted when dividends are withdrawn
@@ -242,6 +242,7 @@ contract RayFiToken is ERC20, Ownable {
         s_feeReceiver = feeReceiver;
         s_dividendReceiver = dividendReceiver;
         s_isFeeExempt[dividendReceiver] = true;
+        s_isExcludedFromDividends[dividendReceiver] = true;
         s_isExcludedFromDividends[address(this)] = true;
         s_isExcludedFromDividends[address(0)] = true;
 
@@ -306,19 +307,29 @@ contract RayFiToken is ERC20, Ownable {
         }
 
         uint256 totalSharesAmount = s_totalSharesAmount;
-        uint256 totalStakedRayFi = s_totalStakedAmount;
-        if (totalStakedRayFi >= 1) {
-            uint256 dividendsToReinvest = totalUnclaimedDividends * totalStakedRayFi / totalSharesAmount;
+        if (totalSharesAmount <= 0) {
+            revert RayFi__ZeroShareholders();
+        }
+
+        uint256 magnifiedDividendPerShare;
+        uint256 magnifiedRayFiPerShare;
+
+        uint256 totalStakedAmount = s_totalStakedAmount;
+        if (totalStakedAmount >= 1) {
+            uint256 dividendsToReinvest = totalUnclaimedDividends * totalStakedAmount / totalSharesAmount;
             address dividendReceiver = s_dividendReceiver;
             _swapDividendsForRayFi(dividendReceiver, dividendsToReinvest);
 
             uint256 rayFiToDistribute = balanceOf(dividendReceiver);
             uint256 dividendsToDistribute = totalUnclaimedDividends - dividendsToReinvest;
 
-            uint256 totalNonStakedRayFi = totalSharesAmount - totalStakedRayFi;
-            uint256 magnifiedDividendPerShare =
-                totalNonStakedRayFi > 0 ? _calculateDividendPerShare(dividendsToDistribute, totalNonStakedRayFi) : 0;
-            uint256 magnifiedRayFiPerShare = _calculateDividendPerShare(rayFiToDistribute, totalStakedRayFi);
+            uint256 totalNonStakedAmount = totalSharesAmount - totalStakedAmount;
+            magnifiedDividendPerShare =
+                totalNonStakedAmount >= 1 ? _calculateDividendPerShare(dividendsToDistribute, totalNonStakedAmount) : 0;
+            magnifiedRayFiPerShare = _calculateDividendPerShare(rayFiToDistribute, totalStakedAmount);
+        } else {
+            magnifiedDividendPerShare = _calculateDividendPerShare(totalUnclaimedDividends, totalSharesAmount);
+        }
 
             if (isStateful) {
                 uint256 lastMagnifiedDividendPerShare = s_magnifiedDividendPerShare;
@@ -677,25 +688,22 @@ contract RayFiToken is ERC20, Ownable {
                 gasForDividends, shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare
             );
         } else {
-            _runDividendLoopStateLess(shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare);
-        }
-    }
+            uint256 withdrawnDividends;
+            uint256 stakedRayFi;
+            for (uint256 i; i < shareholderCount; ++i) {
+                (address user,) = s_shareholders.at(i);
+                (uint256 withdrawnDividendOfUser, uint256 stakedRayFiOfUser) =
+                    _processDividendOfUserStateless(user, magnifiedDividendPerShare, magnifiedRayFiPerShare);
+                withdrawnDividends += withdrawnDividendOfUser;
+                stakedRayFi += stakedRayFiOfUser;
+            }
 
-    /**
-     * @dev Low-level function to run the dividend distribution loop in a stateless manner
-     * @param shareholderCount The total number of shareholders
-     * @param magnifiedDividendPerShare The magnified dividend amount per share
-     * @param magnifiedRayFiPerShare The magnified RayFi amount per share
-     */
-    function _runDividendLoopStateLess(
-        uint256 shareholderCount,
-        uint256 magnifiedDividendPerShare,
-        uint256 magnifiedRayFiPerShare
-    ) private {
-        for (uint256 i; i < shareholderCount; ++i) {
-            _processDividendOfUserStateLess(
-                s_shareholders.shareholderAt(i), magnifiedDividendPerShare, magnifiedRayFiPerShare
-            );
+            if (stakedRayFi >= 1) {
+                super._update(s_dividendReceiver, address(this), stakedRayFi);
+                s_totalStakedAmount += stakedRayFi;
+            }
+
+            emit DividendsDistributed(withdrawnDividends, stakedRayFi);
         }
     }
 
@@ -743,24 +751,21 @@ contract RayFiToken is ERC20, Ownable {
      * @param magnifiedDividendPerShare The magnified dividend amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
-    function _processDividendOfUserStateLess(
+    function _processDividendOfUserStateless(
         address user,
         uint256 magnifiedDividendPerShare,
         uint256 magnifiedRayFiPerShare
-    ) private {
-        uint256 earnedDividend = _getEarnedDividend(user, magnifiedDividendPerShare);
-        uint256 earnedRayFi = _getEarnedRayFi(user, magnifiedRayFiPerShare);
+    ) private returns (uint256 withdrawableDividend, uint256 reinvestableRayFi) {
+        withdrawableDividend = _calculateDividend(magnifiedDividendPerShare, balanceOf(user));
+        reinvestableRayFi = _calculateDividend(magnifiedRayFiPerShare, s_stakedBalances[user]);
 
-        if (earnedDividend >= 1) {
-            ERC20(s_dividendToken).transfer(user, earnedDividend);
-
-            emit DividendsWithdrawn(user, earnedDividend);
+        if (withdrawableDividend >= 1) {
+            ERC20(s_dividendToken).transfer(user, withdrawableDividend);
         }
-        if (earnedRayFi >= 1) {
-            super._update(s_dividendReceiver, address(this), earnedRayFi);
-            _stake(user, earnedRayFi);
-
-            emit DividendsReinvested(user, earnedRayFi);
+        if (reinvestableRayFi >= 1) {
+            unchecked {
+                s_stakedBalances[user] += reinvestableRayFi;
+            }
         }
     }
 
