@@ -59,7 +59,9 @@ contract RayFiToken is ERC20, Ownable {
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
     mapping(address user => uint256 withdrawnRewards) private s_withdrawnRewards;
     mapping(address user => uint256 reinvestedRayFi) private s_reinvestedRayFi;
-    mapping(address key => Vault vault) private s_vaults;
+    mapping(address token => Vault vault) private s_vaults;
+
+    address[] private s_vaultTokens;
 
     EnumerableMap.AddressToUintMap private s_shareholders;
 
@@ -187,15 +189,15 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @dev Triggered when trying to add a vault that already exists
-     * @param vaultAddress The address of the vault that already exists
+     * @param vaultToken The address of the vault that already exists
      */
-    error RayFi__VaultAlreadyExists(address vaultAddress);
+    error RayFi__VaultAlreadyExists(address vaultToken);
 
     /**
      * @dev Triggered when trying to interact with a vault that does not exist
-     * @param vaultAddress The address of the vault that does not exist
+     * @param vaultToken The address of the vault that does not exist
      */
-    error RayFi__VaultDoesNotExist(address vaultAddress);
+    error RayFi__VaultDoesNotExist(address vaultToken);
 
     /**
      * @dev Indicates a failure in setting new fees due to the total fees being too high
@@ -270,8 +272,8 @@ contract RayFiToken is ERC20, Ownable {
         s_isExcludedFromRewards[address(this)] = true;
         s_isExcludedFromRewards[address(0)] = true;
 
-        s_vaultKeys.push(address(this));
-        s_vaults[address(this)].vaultId = s_vaultKeys.length;
+        s_vaultTokens.push(address(this));
+        s_vaults[address(this)].vaultId = s_vaultTokens.length;
 
         _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
     }
@@ -378,33 +380,33 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice This function allows the owner to add a new vault to the RayFi protocol
-     * @param vaultAddress The address of the new vault
+     * @param vaultToken The key of the new vault, which should be the address of the associated ERC20 reward token
      */
-    function addVault(address vaultAddress) external onlyOwner {
-        if (s_vaults[vaultAddress].vaultId != 0) {
-            revert RayFi__VaultAlreadyExists(vaultAddress);
-        } else if (vaultAddress == address(0)) {
+    function addVault(address vaultToken) external onlyOwner {
+        if (s_vaults[vaultToken].vaultId != 0) {
+            revert RayFi__VaultAlreadyExists(vaultToken);
+        } else if (vaultToken == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         } else {
-            s_vaultKeys.push(vaultAddress);
-            s_vaults[vaultAddress].vaultId = s_vaultKeys.length;
+            s_vaultTokens.push(vaultToken);
+            s_vaults[vaultToken].vaultId = s_vaultTokens.length;
         }
     }
 
     /**
      * @notice This function allows the owner to remove a vault from the RayFi protocol
      * @dev To remove a vault, we only need to reset its id, rather than all the data related to it
-     * This is because the `s_vaultKeys` will be left with a gap and if the same vault is added again,
-     * it will be assigned a new id, which is the next available index in the `s_vaultKeys`
-     * @param vaultAddress The address of the vault to remove
+     * This is because the `s_vaultTokens` array will be left with a gap and if the same vault is added again,
+     * it will be assigned a new id, which is the next available index in the `s_vaultTokens`
+     * @param vaultToken The key of the vault to remove
      */
-    function removeVault(address vaultAddress) external onlyOwner {
-        uint256 vaultId = s_vaults[vaultAddress].vaultId;
+    function removeVault(address vaultToken) external onlyOwner {
+        uint256 vaultId = s_vaults[vaultToken].vaultId;
         if (vaultId <= 0) {
-            revert RayFi__VaultDoesNotExist(vaultAddress);
+            revert RayFi__VaultDoesNotExist(vaultToken);
         } else {
-            delete s_vaultKeys[vaultId - 1];
-            delete s_vaults[vaultAddress].vaultId;
+            delete s_vaultTokens[vaultId - 1];
+            delete s_vaults[vaultToken].vaultId;
         }
     }
 
