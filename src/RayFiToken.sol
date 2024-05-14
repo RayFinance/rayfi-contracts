@@ -21,10 +21,12 @@ contract RayFiToken is ERC20, Ownable {
     using EnumerableMap for EnumerableMap.AddressToUintMap;
 
     struct Vault {
+        address[] users;
         uint256 vaultId;
         uint256 totalStakedAmount;
         uint256 magnifiedRewardPerShare;
         uint256 lastProcessedIndex;
+        mapping(address user => uint256 position) positions;
         mapping(address user => uint256 amountStaked) stakedBalances;
         mapping(address user => uint256 withdrawnRewards) withdrawnRewards;
     }
@@ -683,9 +685,16 @@ contract RayFiToken is ERC20, Ownable {
      * @param user The address of the user to stake the RayFi tokens for
      * @param value The amount of RayFi tokens to stake
      */
-    function _stake(address vault, address user, uint256 value) private {
-        s_vaults[vault].stakedBalances[user] += value;
-        s_vaults[vault].totalStakedAmount += value;
+    function _stake(address vaultToken, address user, uint256 value) private {
+        uint256 position = s_vaults[vaultToken].positions[user];
+        if (position == 0) {
+            position = s_vaults[vaultToken].users.length;
+            s_vaults[vaultToken].users.push(user);
+        }
+
+        s_vaults[vaultToken].stakedBalances[user] += value;
+        s_vaults[vaultToken].totalStakedAmount += value;
+s_stakedBalances[user] += value;
         s_totalStakedAmount += value;
 
         emit RayFiStaked(user, value, s_totalStakedAmount);
@@ -696,10 +705,24 @@ contract RayFiToken is ERC20, Ownable {
      * @param user The address of the user to unstake the RayFi tokens for
      * @param value The amount of RayFi tokens to unstake
      */
-    function _unstake(address vault, address user, uint256 value) private {
-        s_vaults[vault].stakedBalances[user] -= value;
-        s_vaults[vault].totalStakedAmount -= value;
+    function _unstake(address vaultToken, address user, uint256 value) private {
+        s_vaults[vaultToken].stakedBalances[user] -= value;
+        s_vaults[vaultToken].totalStakedAmount -= value;
+s_stakedBalances[user] -= value;
         s_totalStakedAmount -= value;
+
+        if (s_vaults[vaultToken].stakedBalances[user] <= 0) {
+            Vault storage vault = s_vaults[vaultToken];
+            uint256 userIndex = vault.positions[user] - 1;
+            uint256 lastIndex = vault.users.length - 1;
+            if (userIndex != lastIndex) {
+                address lastUser = vault.users[lastIndex];
+                vault.users[userIndex] = lastUser;
+                vault.positions[lastUser] = userIndex;
+            }
+            vault.users.pop();
+            delete vault.positions[user];
+        }
 
         emit RayFiUnstaked(user, value, s_totalStakedAmount);
     }
