@@ -263,10 +263,15 @@ contract RayFiToken is ERC20, Ownable {
         s_router = router;
         s_feeReceiver = feeReceiver;
         s_rewardReceiver = rewardReceiver;
+
         s_isFeeExempt[rewardReceiver] = true;
+
         s_isExcludedFromRewards[rewardReceiver] = true;
         s_isExcludedFromRewards[address(this)] = true;
         s_isExcludedFromRewards[address(0)] = true;
+
+        s_vaultKeys.push(address(this));
+        s_vaults[address(this)].vaultId = s_vaultKeys.length;
 
         _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
     }
