@@ -110,21 +110,34 @@ contract RayFiTokenTest is Test {
     // Transfer Tests ////
     //////////////////////
 
-    function testTransferWorks() public {
+    function testTransferWorksAndTakesFees() public feesSet {
+        vm.prank(msg.sender);
+        rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
+
+        uint256 feeAmount = TRANSFER_AMOUNT * (BUY_FEE + SELL_FEE) / 100;
+        assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT - feeAmount);
+        assertEq(rayFiToken.balanceOf(FEE_RECEIVER), feeAmount);
+    }
+
+    function testTransferToFeeExemptAddressWorks() public feesSet {
         vm.startPrank(msg.sender);
+        rayFiToken.setIsFeeExempt(address(this), true);
         rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
         vm.stopPrank();
 
         assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.balanceOf(FEE_RECEIVER), 0);
     }
 
-    function testTransferFromWorks() public {
-        vm.startPrank(msg.sender);
+    function testTransferFromWorksAndTakesFees() public feesSet {
+        vm.prank(msg.sender);
         rayFiToken.approve(address(this), TRANSFER_AMOUNT);
-        vm.stopPrank();
 
         rayFiToken.transferFrom(msg.sender, address(this), TRANSFER_AMOUNT);
-        assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT);
+
+        uint256 feeAmount = TRANSFER_AMOUNT * (BUY_FEE + SELL_FEE) / 100;
+        assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT - feeAmount);
+        assertEq(rayFiToken.balanceOf(FEE_RECEIVER), feeAmount);
     }
 
     function testTransfersUpdateShareholdersSet() public minimumBalanceForRewardsSet {

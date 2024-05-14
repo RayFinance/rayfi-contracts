@@ -402,7 +402,7 @@ contract RayFiToken is ERC20, Ownable {
      * @param user The address to update
      * @param isExempt Whether the address is exempt from fees
      */
-    function setFeeExempt(address user, bool isExempt) external onlyOwner {
+    function setIsFeeExempt(address user, bool isExempt) external onlyOwner {
         s_isFeeExempt[user] = isExempt;
         emit IsUserExemptFromFeesUpdated(user, isExempt);
     }
@@ -564,6 +564,12 @@ contract RayFiToken is ERC20, Ownable {
             if (sellFee >= 1) {
                 value -= _takeFee(from, value, sellFee);
             }
+        } else if (!s_isFeeExempt[from] && !s_isFeeExempt[to]) {
+            // Transfer
+            uint8 transferFee = s_buyFee + s_sellFee;
+            if (transferFee >= 1) {
+                value -= _takeFee(from, value, transferFee);
+            }
         }
 
         super._update(from, to, value);
@@ -581,8 +587,9 @@ contract RayFiToken is ERC20, Ownable {
      */
     function _takeFee(address from, uint256 value, uint8 fee) private returns (uint256 feeAmount) {
         feeAmount = value * fee / 100;
-        super._update(from, s_feeReceiver, feeAmount);
-        _updateShareholder(s_feeReceiver);
+        address feeReceiver = s_feeReceiver;
+        super._update(from, feeReceiver, feeAmount);
+        _updateShareholder(feeReceiver);
     }
 
     /**
