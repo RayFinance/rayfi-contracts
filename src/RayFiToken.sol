@@ -312,7 +312,7 @@ contract RayFiToken is ERC20, Ownable {
         uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
         if (stakedBalanceBefore < value) {
             revert RayFi__InsufficientStakedBalance(stakedBalanceBefore, value);
-} else if (stakedBalanceAfter < minimumTokenBalanceForRewards) {
+        } else if (stakedBalanceAfter < minimumTokenBalanceForRewards) {
             revert RayFi__InsufficientTokensToStake(stakedBalanceAfter, minimumTokenBalanceForRewards);
         }
 
@@ -336,8 +336,12 @@ contract RayFiToken is ERC20, Ownable {
      * `gasForRewards` should be set to a value that is less than the gas limit of the transaction
      * This parameter is ignored in stateless mode
      * @param isStateful Whether to save the state of the distribution to resume it later
+     * @param vaultTokens The list of vaults to distribute rewards to, can be left empty to distribute to all vaults
      */
-    function distributeRewards(uint256 gasForRewards, bool isStateful) external onlyOwner {
+    function distributeRewards(uint256 gasForRewards, bool isStateful, uint8 slippage, address[] memory vaultTokens)
+        external
+        onlyOwner
+    {
         uint256 totalUnclaimedRewards = ERC20(s_rewardToken).balanceOf(address(this));
         if (totalUnclaimedRewards <= 0) {
             revert RayFi__NothingToDistribute();
@@ -349,39 +353,67 @@ contract RayFiToken is ERC20, Ownable {
         }
 
         uint256 magnifiedRewardPerShare;
-        uint256 magnifiedRayFiPerShare;
-
         uint256 totalStakedAmount = s_totalStakedAmount;
+        address rewardToken = s_rewardToken;
         if (totalStakedAmount >= 1) {
-            uint256 rewardsToReinvest = totalUnclaimedRewards * totalStakedAmount / totalSharesAmount;
-            address rewardReceiver = s_rewardReceiver;
-            _swapRewardsForRayFi(rewardReceiver, rewardsToReinvest);
+            if (vaultTokens.length <= 0) {
+                vaultTokens = s_vaultTokens;
+            }
 
-            uint256 rayFiToDistribute = balanceOf(rewardReceiver);
-            uint256 rewardsToDistribute = totalUnclaimedRewards - rewardsToReinvest;
+            IUniswapV2Router02 router = s_router;
+
+            uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedAmount / totalSharesAmount;
+            ERC20(rewardToken).approve(address(router), totalRewardsToReinvest);
+
+            address swapReceiver = s_swapReceiver;
+            for (uint256 i; i < vaultTokens.length; ++i) {
+                address vaultToken = vaultTokens[i];
+                Vault storage vault = s_vaults[vaultToken];
+
+                uint256 totalStakedAmountInVault = vault.totalStakedAmount;
+                if (totalStakedAmountInVault <= 0) {
+                    continue;
+                }
+
+                uint256 rewardsToReinvest = totalRewardsToReinvest * totalStakedAmountInVault / totalStakedAmount;
+                uint256 vaultTokensToDistribute;
+                if (vaultToken == address(this)) {
+                    _swapRewards(router, rewardToken, vaultToken, swapReceiver, rewardsToReinvest, slippage);
+                    vaultTokensToDistribute = ERC20(vaultToken).balanceOf(swapReceiver);
+                } else {
+                    _swapRewards(router, rewardToken, vaultToken, address(this), rewardsToReinvest, slippage);
+                    vaultTokensToDistribute = ERC20(vaultToken).balanceOf(address(this));
+                }
+
+                uint256 magnifiedVaultTokensPerShare =
+                    _calculateRewardPerShare(vaultTokensToDistribute, totalStakedAmountInVault);
+
+                _processVault(gasForRewards, magnifiedVaultTokensPerShare, vaultToken, isStateful);
+            }
 
             uint256 totalNonStakedAmount = totalSharesAmount - totalStakedAmount;
-            magnifiedRewardPerShare =
-                totalNonStakedAmount >= 1 ? _calculateRewardPerShare(rewardsToDistribute, totalNonStakedAmount) : 0;
-            magnifiedRayFiPerShare = _calculateRewardPerShare(rayFiToDistribute, totalStakedAmount);
+            if (totalNonStakedAmount >= 1) {
+                totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
+                magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
+            }
         } else {
             magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalSharesAmount);
         }
 
-        if (isStateful) {
-            uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
-            uint256 lastMagnifiedRayFiPerShare = s_magnifiedRayFiPerShare;
-            if (lastMagnifiedRewardPerShare >= 1 || lastMagnifiedRayFiPerShare >= 1) {
-                // Distribute the undistributed rewards from the last cycle
-                magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
-                magnifiedRayFiPerShare = lastMagnifiedRayFiPerShare;
-            } else {
-                s_magnifiedRewardPerShare = magnifiedRayFiPerShare;
-                s_magnifiedRayFiPerShare = magnifiedRewardPerShare;
-            }
-        }
+        // if (isStateful) {
+        //     uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
+        //     uint256 lastMagnifiedRayFiPerShare = s_magnifiedRayFiPerShare;
+        //     if (lastMagnifiedRewardPerShare >= 1 || lastMagnifiedRayFiPerShare >= 1) {
+        //         // Distribute the undistributed rewards from the last cycle
+        //         magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
+        //         magnifiedRayFiPerShare = lastMagnifiedRayFiPerShare;
+        //     } else {
+        //         s_magnifiedRewardPerShare = magnifiedRayFiPerShare;
+        //         s_magnifiedRayFiPerShare = magnifiedRewardPerShare;
+        //     }
+        // }
 
-        _processRewards(gasForRewards, magnifiedRewardPerShare, magnifiedRayFiPerShare, isStateful);
+        _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, isStateful);
     }
 
     /**
@@ -698,7 +730,7 @@ contract RayFiToken is ERC20, Ownable {
 
         s_vaults[vaultToken].stakedBalances[user] += value;
         s_vaults[vaultToken].totalStakedAmount += value;
-s_stakedBalances[user] += value;
+        s_stakedBalances[user] += value;
         s_totalStakedAmount += value;
 
         emit RayFiStaked(user, value, s_totalStakedAmount);
@@ -712,7 +744,7 @@ s_stakedBalances[user] += value;
     function _unstake(address vaultToken, address user, uint256 value) private {
         s_vaults[vaultToken].stakedBalances[user] -= value;
         s_vaults[vaultToken].totalStakedAmount -= value;
-s_stakedBalances[user] -= value;
+        s_stakedBalances[user] -= value;
         s_totalStakedAmount -= value;
 
         if (s_vaults[vaultToken].stakedBalances[user] <= 0) {
@@ -777,7 +809,7 @@ s_stakedBalances[user] -= value;
             _runRewardLoopStateFul(gasForRewards, shareholderCount, magnifiedRewardPerShare, 0);
         } else {
             uint256 withdrawnRewards;
-                        for (uint256 i; i < shareholderCount; ++i) {
+            for (uint256 i; i < shareholderCount; ++i) {
                 (address user,) = s_shareholders.at(i);
                 withdrawnRewards += _processRewardOfUserStateless(user, magnifiedRewardPerShare, rewardToken);
             }
@@ -869,10 +901,10 @@ s_stakedBalances[user] -= value;
         returns (uint256 withdrawableReward)
     {
         withdrawableReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user));
-                if (withdrawableReward >= 1) {
+        if (withdrawableReward >= 1) {
             ERC20(rewardToken).transfer(user, withdrawableReward);
         }
-        }
+    }
 
     /**
      * @notice Processes rewards for a specific token holder for a specific vault
@@ -889,8 +921,8 @@ s_stakedBalances[user] -= value;
             if (vaultToken != address(this)) {
                 ERC20(vaultToken).transfer(user, withdrawableReward);
             } else {
-            unchecked {
-                s_stakedBalances[user] += withdrawableReward;
+                unchecked {
+                    s_stakedBalances[user] += withdrawableReward;
                 }
             }
         }
