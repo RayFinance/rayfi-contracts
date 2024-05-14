@@ -19,6 +19,15 @@ contract RayFiToken is ERC20, Ownable {
 
     using EnumerableMap for EnumerableMap.AddressToUintMap;
 
+    struct Vault {
+        uint256 vaultId;
+        uint256 totalStakedAmount;
+        uint256 magnifiedRewardPerShare;
+        uint256 lastProcessedIndex;
+        mapping(address user => uint256 amountStaked) stakedBalances;
+        mapping(address user => uint256 withdrawnRewards) withdrawnRewards;
+    }
+
     /////////////////////
     // State Variables //
     /////////////////////
@@ -34,6 +43,7 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
 
+    address[] private s_vaultKeys;
     address private s_rewardToken;
     address private s_router;
     address private s_feeReceiver;
@@ -48,6 +58,7 @@ contract RayFiToken is ERC20, Ownable {
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
     mapping(address user => uint256 withdrawnRewards) private s_withdrawnRewards;
     mapping(address user => uint256 reinvestedRayFi) private s_reinvestedRayFi;
+    mapping(address key => Vault vault) private s_vaults;
 
     EnumerableMap.AddressToUintMap private s_shareholders;
 
