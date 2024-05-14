@@ -185,6 +185,18 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__CannotSetToZeroAddress();
 
     /**
+     * @dev Triggered when trying to add a vault that already exists
+     * @param vaultAddress The address of the vault that already exists
+     */
+    error RayFi__VaultAlreadyExists(address vaultAddress);
+
+    /**
+     * @dev Triggered when trying to interact with a vault that does not exist
+     * @param vaultAddress The address of the vault that does not exist
+     */
+    error RayFi__VaultDoesNotExist(address vaultAddress);
+
+    /**
      * @dev Indicates a failure in setting new fees due to the total fees being too high
      * @param totalFees The total fees that were attempted to be set
      */
@@ -355,6 +367,38 @@ contract RayFiToken is ERC20, Ownable {
         }
 
         _processRewards(gasForRewards, magnifiedRewardPerShare, magnifiedRayFiPerShare, isStateful);
+    }
+
+    /**
+     * @notice This function allows the owner to add a new vault to the RayFi protocol
+     * @param vaultAddress The address of the new vault
+     */
+    function addVault(address vaultAddress) external onlyOwner {
+        if (s_vaults[vaultAddress].vaultId != 0) {
+            revert RayFi__VaultAlreadyExists(vaultAddress);
+        } else if (vaultAddress == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
+        } else {
+            s_vaultKeys.push(vaultAddress);
+            s_vaults[vaultAddress].vaultId = s_vaultKeys.length;
+        }
+    }
+
+    /**
+     * @notice This function allows the owner to remove a vault from the RayFi protocol
+     * @dev To remove a vault, we only need to reset its id, rather than all the data related to it
+     * This is because the `s_vaultKeys` will be left with a gap and if the same vault is added again,
+     * it will be assigned a new id, which is the next available index in the `s_vaultKeys`
+     * @param vaultAddress The address of the vault to remove
+     */
+    function removeVault(address vaultAddress) external onlyOwner {
+        uint256 vaultId = s_vaults[vaultAddress].vaultId;
+        if (vaultId <= 0) {
+            revert RayFi__VaultDoesNotExist(vaultAddress);
+        } else {
+            delete s_vaultKeys[vaultId - 1];
+            delete s_vaults[vaultAddress].vaultId;
+        }
     }
 
     /**
