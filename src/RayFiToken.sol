@@ -5,6 +5,7 @@ pragma solidity ^0.8.20;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 /**
  * @title RayFiToken
@@ -43,11 +44,11 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
 
-    address[] private s_vaultKeys;
+    IUniswapV2Router02 private s_router;
+
     address private s_rewardToken;
-    address private s_router;
     address private s_feeReceiver;
-    address private s_rewardReceiver;
+    address private s_swapReceiver;
 
     uint8 private s_buyFee;
     uint8 private s_sellFee;
@@ -104,11 +105,11 @@ contract RayFiToken is ERC20, Ownable {
     event FeeReceiverUpdated(address indexed newFeeReceiver, address indexed oldFeeReceiver);
 
     /**
-     * @notice Emitted when the reward receiver is updated
-     * @param newRewardReceiver The new reward receiver
-     * @param oldRewardReceiver The old reward receiver
+     * @notice Emitted when the swap receiver is updated
+     * @param newSwapReceiver The new swap receiver
+     * @param oldSwapReceiver The old swap receiver
      */
-    event RewardReceiverUpdated(address indexed newRewardReceiver, address indexed oldRewardReceiver);
+    event SwapReceiverUpdated(address indexed newSwapReceiver, address indexed oldSwapReceiver);
 
     /**
      * @notice Emitted when the reward token is updated
@@ -234,9 +235,9 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__NothingToDistribute();
 
     /**
-     * @dev Triggered when trying to reinvest rewards, but the swap failed
+     * @dev Triggered when a swap fails
      */
-    error RayFi__ReinvestSwapFailed();
+    error RayFi__SwapFailed();
 
     ////////////////////
     // Constructor    //
@@ -246,27 +247,26 @@ contract RayFiToken is ERC20, Ownable {
      * @param rewardToken The address of the token that will be used to distribute rewards
      * @param router The address of the router that will be used to reinvest rewards
      * @param feeReceiver The address of the contract that will track rewards
-     * @param rewardReceiver The address of the wallet that will distribute swapped rewards
+     * @param swapReceiver The address of the wallet that will distribute swapped rewards
      */
-    constructor(address rewardToken, address router, address feeReceiver, address rewardReceiver)
+    constructor(address rewardToken, address router, address feeReceiver, address swapReceiver)
         ERC20("RayFi", "RAYFI")
         Ownable(msg.sender)
     {
         if (
-            rewardToken == address(0) || router == address(0) || feeReceiver == address(0)
-                || rewardReceiver == address(0)
+            rewardToken == address(0) || router == address(0) || feeReceiver == address(0) || swapReceiver == address(0)
         ) {
             revert RayFi__CannotSetToZeroAddress();
         }
 
         s_rewardToken = rewardToken;
-        s_router = router;
+        s_router = IUniswapV2Router02(router);
         s_feeReceiver = feeReceiver;
-        s_rewardReceiver = rewardReceiver;
+        s_swapReceiver = swapReceiver;
 
-        s_isFeeExempt[rewardReceiver] = true;
+        s_isFeeExempt[swapReceiver] = true;
 
-        s_isExcludedFromRewards[rewardReceiver] = true;
+        s_isExcludedFromRewards[swapReceiver] = true;
         s_isExcludedFromRewards[address(this)] = true;
         s_isExcludedFromRewards[address(0)] = true;
 
@@ -490,8 +490,8 @@ contract RayFiToken is ERC20, Ownable {
         if (newRouter == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
-        address oldRouter = s_router;
-        s_router = newRouter;
+        address oldRouter = address(s_router);
+        s_router = IUniswapV2Router02(newRouter);
         emit RouterUpdated(newRouter, oldRouter);
     }
 
@@ -510,15 +510,15 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice Sets the address of the wallet that will receive swapped rewards
-     * @param newRewardReceiver The address of the new reward receiver
+     * @param newSwapReceiver The address of the new swap receiver
      */
-    function setRewardReceiver(address newRewardReceiver) external onlyOwner {
-        if (newRewardReceiver == address(0)) {
+    function setSwapReceiver(address newSwapReceiver) external onlyOwner {
+        if (newSwapReceiver == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
-        address oldRewardReceiver = s_rewardReceiver;
-        s_rewardReceiver = newRewardReceiver;
-        emit RewardReceiverUpdated(newRewardReceiver, oldRewardReceiver);
+        address oldSwapReceiver = s_swapReceiver;
+        s_swapReceiver = newSwapReceiver;
+        emit SwapReceiverUpdated(newSwapReceiver, oldSwapReceiver);
     }
 
     ////////////////////////////////
@@ -703,32 +703,31 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to swap rewards for RayFi tokens
-     * We have to send the output of the swap to a separate wallet `rewardReceiver`
-     * This is because V2 pools disallow setting the recipient of a swap as one of the tokens being swapped
-     * @param rewardReceiver The address of the wallet that will receive the swapped rewards
-     * @param amount The amount of rewards to swap
+     * @dev Low-level function to swap the reward token using a UniswapV2-compatible router
+     * Assumes that the tokens have already been approved for spending
+     * @param router The address of the UniswapV2-compatible router
+     * @param tokenIn The address of the token to swap from
+     * @param tokenOut The address of the token to swap to
+     * @param to The address to send the swapped tokens to
+     * @param amountIn The amount of tokens to swap from
+     * @param slippage The maximum acceptable percentage slippage for the swap
      */
-    function _swapRewardsForRayFi(address rewardReceiver, uint256 amount) private {
-        address rewardToken = s_rewardToken;
-        ERC20(rewardToken).approve(address(s_router), amount);
-
+    function _swapRewards(
+        IUniswapV2Router02 router,
+        address tokenIn,
+        address tokenOut,
+        address to,
+        uint256 amountIn,
+        uint8 slippage
+    ) private {
         address[] memory path = new address[](2);
-        path[0] = rewardToken;
-        path[1] = address(this);
-        (bool success,) = s_router.call(
-            abi.encodeWithSignature(
-                "swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
-                amount,
-                0,
-                path,
-                rewardReceiver,
-                block.timestamp
-            )
-        );
-        if (!success) {
-            revert RayFi__ReinvestSwapFailed();
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+        uint256 amountOutMin = router.getAmountsOut(amountIn, path)[1];
+        if (slippage >= 1) {
+            amountOutMin = amountOutMin * (100 - slippage) / 100;
         }
+        router.swapExactTokensForTokens(amountIn, amountOutMin, path, to, block.timestamp);
     }
 
     /**
