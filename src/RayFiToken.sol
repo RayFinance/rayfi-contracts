@@ -29,25 +29,24 @@ contract RayFiToken is ERC20, Ownable {
 
     uint256 private s_totalStakedAmount;
     uint256 private s_totalSharesAmount;
-    uint256 private s_minimumTokenBalanceForDividends;
+    uint256 private s_minimumTokenBalanceForRewards;
     uint256 private s_magnifiedRayFiPerShare;
-    uint256 private s_magnifiedDividendPerShare;
+    uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
-    uint256 private s_totalDividendsDistributed;
 
-    address private s_dividendToken;
+    address private s_rewardToken;
     address private s_router;
     address private s_feeReceiver;
-    address private s_dividendReceiver;
+    address private s_rewardReceiver;
 
     uint8 private s_buyFee;
     uint8 private s_sellFee;
 
     mapping(address user => bool isExemptFromFees) private s_isFeeExempt;
-    mapping(address user => bool isExcludedFromDividends) private s_isExcludedFromDividends;
+    mapping(address user => bool isExcludedFromRewards) private s_isExcludedFromRewards;
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
-    mapping(address user => uint256 withdrawnDividends) private s_withdrawnDividends;
+    mapping(address user => uint256 withdrawnRewards) private s_withdrawnRewards;
     mapping(address user => uint256 reinvestedRayFi) private s_reinvestedRayFi;
 
     EnumerableMap.AddressToUintMap private s_shareholders;
@@ -94,18 +93,18 @@ contract RayFiToken is ERC20, Ownable {
     event FeeReceiverUpdated(address indexed newFeeReceiver, address indexed oldFeeReceiver);
 
     /**
-     * @notice Emitted when the dividend receiver is updated
-     * @param newDividendReceiver The new dividend receiver
-     * @param oldDividendReceiver The old dividend receiver
+     * @notice Emitted when the reward receiver is updated
+     * @param newRewardReceiver The new reward receiver
+     * @param oldRewardReceiver The old reward receiver
      */
-    event DividendReceiverUpdated(address indexed newDividendReceiver, address indexed oldDividendReceiver);
+    event RewardReceiverUpdated(address indexed newRewardReceiver, address indexed oldRewardReceiver);
 
     /**
-     * @notice Emitted when the dividend token is updated
-     * @param newDividendToken The new dividend token
-     * @param oldDividendToken The old dividend token
+     * @notice Emitted when the reward token is updated
+     * @param newRewardToken The new reward token
+     * @param oldRewardToken The old reward token
      */
-    event DividendTokenUpdated(address indexed newDividendToken, address indexed oldDividendToken);
+    event RewardTokenUpdated(address indexed newRewardToken, address indexed oldRewardToken);
 
     /**
      * @notice Emitted when the router is updated
@@ -122,39 +121,39 @@ contract RayFiToken is ERC20, Ownable {
     event AutomatedMarketPairUpdated(address indexed pair, bool indexed active);
 
     /**
-     * @notice Emitted when the minimum token balance for dividends is updated
-     * @param newMinimum The new minimum token balance for dividends
-     * @param oldMinimum The previous minimum token balance for dividends
+     * @notice Emitted when the minimum token balance for rewards is updated
+     * @param newMinimum The new minimum token balance for rewards
+     * @param oldMinimum The previous minimum token balance for rewards
      */
-    event MinimumTokenBalanceForDividendsUpdated(uint256 indexed newMinimum, uint256 indexed oldMinimum);
+    event MinimumTokenBalanceForRewardsUpdated(uint256 indexed newMinimum, uint256 indexed oldMinimum);
 
     /**
-     * @notice Emitted when a user is marked as excluded from dividends
+     * @notice Emitted when a user is marked as excluded from rewards
      * @param user The address of the user
-     * @param isExcluded Whether the user is excluded from dividends
+     * @param isExcluded Whether the user is excluded from rewards
      */
-    event IsUserExcludedFromDividendsUpdated(address indexed user, bool indexed isExcluded);
+    event IsUserExcludedFromRewardsUpdated(address indexed user, bool indexed isExcluded);
 
     /**
-     * @notice Emitted when dividends are distributed
-     * @param totalDividendsWithdrawn The amount of dividends that were airdropped to users
-     * @param totalRayFiStaked The amount of RayFi that was staked after reinvesting dividends
+     * @notice Emitted when rewards are distributed
+     * @param totalRewardsWithdrawn The amount of rewards that were airdropped to users
+     * @param totalRayFiStaked The amount of RayFi that was staked after reinvesting rewards
      */
-    event DividendsDistributed(uint256 indexed totalDividendsWithdrawn, uint256 indexed totalRayFiStaked);
+    event RewardsDistributed(uint256 indexed totalRewardsWithdrawn, uint256 indexed totalRayFiStaked);
 
     /**
-     * @notice Emitted when dividends are withdrawn
-     * @param user The user that withdrew the dividends
-     * @param amount The amount of dividends that were withdrawn
+     * @notice Emitted when rewards are withdrawn
+     * @param user The user that withdrew the rewards
+     * @param amount The amount of rewards that were withdrawn
      */
-    event DividendsWithdrawn(address indexed user, uint256 indexed amount);
+    event RewardsWithdrawn(address indexed user, uint256 indexed amount);
 
     /**
-     * @notice Emitted when dividends are reinvested
-     * @param user The user that reinvested the dividends
+     * @notice Emitted when rewards are reinvested
+     * @param user The user that reinvested the rewards
      * @param amount The amount of RayFi that was compounded
      */
-    event DividendsReinvested(address indexed user, uint256 indexed amount);
+    event RewardsReinvested(address indexed user, uint256 indexed amount);
 
     //////////////////
     // Errors       //
@@ -164,7 +163,7 @@ contract RayFiToken is ERC20, Ownable {
      * @notice Triggered when trying to send RayFi tokens to this contract
      * Users should call the `stake` function to stake their RayFi tokens
      * @dev Sending RayFi tokens to the contract is not allowed to prevent accidental staking
-     * This also simplifies dividend tracking and distribution logic
+     * This also simplifies reward tracking and distribution logic
      */
     error RayFi__CannotManuallySendRayFiTokensToTheContract();
 
@@ -195,24 +194,24 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__InsufficientTokensToStake(uint256 tokenAmount, uint256 minimumTokenBalance);
 
     /**
-     * @dev Triggered when trying to process dividends, but not enough gas was sent with the transaction
+     * @dev Triggered when trying to process rewards, but not enough gas was sent with the transaction
      * @param gasRequested The amount of gas requested
      * @param gasProvided The amount of gas provided
      */
     error RayFi__InsufficientGas(uint256 gasRequested, uint256 gasProvided);
 
     /**
-     * @dev Triggered when trying to process dividends, but there are no shareholders
+     * @dev Triggered when trying to process rewards, but there are no shareholders
      */
     error RayFi__ZeroShareholders();
 
     /**
-     * @dev Triggered when trying to distribute dividends, but there are no dividends to distribute
+     * @dev Triggered when trying to distribute rewards, but there are no rewards to distribute
      */
     error RayFi__NothingToDistribute();
 
     /**
-     * @dev Triggered when trying to reinvest dividends, but the swap failed
+     * @dev Triggered when trying to reinvest rewards, but the swap failed
      */
     error RayFi__ReinvestSwapFailed();
 
@@ -221,30 +220,30 @@ contract RayFiToken is ERC20, Ownable {
     ////////////////////
 
     /**
-     * @param dividendToken The address of the token that will be used to distribute dividends
-     * @param router The address of the router that will be used to reinvest dividends
-     * @param feeReceiver The address of the contract that will track dividends
-     * @param dividendReceiver The address of the wallet that will distribute swapped dividends
+     * @param rewardToken The address of the token that will be used to distribute rewards
+     * @param router The address of the router that will be used to reinvest rewards
+     * @param feeReceiver The address of the contract that will track rewards
+     * @param rewardReceiver The address of the wallet that will distribute swapped rewards
      */
-    constructor(address dividendToken, address router, address feeReceiver, address dividendReceiver)
+    constructor(address rewardToken, address router, address feeReceiver, address rewardReceiver)
         ERC20("RayFi", "RAYFI")
         Ownable(msg.sender)
     {
         if (
-            dividendToken == address(0) || router == address(0) || feeReceiver == address(0)
-                || dividendReceiver == address(0)
+            rewardToken == address(0) || router == address(0) || feeReceiver == address(0)
+                || rewardReceiver == address(0)
         ) {
             revert RayFi__CannotSetToZeroAddress();
         }
 
-        s_dividendToken = dividendToken;
+        s_rewardToken = rewardToken;
         s_router = router;
         s_feeReceiver = feeReceiver;
-        s_dividendReceiver = dividendReceiver;
-        s_isFeeExempt[dividendReceiver] = true;
-        s_isExcludedFromDividends[dividendReceiver] = true;
-        s_isExcludedFromDividends[address(this)] = true;
-        s_isExcludedFromDividends[address(0)] = true;
+        s_rewardReceiver = rewardReceiver;
+        s_isFeeExempt[rewardReceiver] = true;
+        s_isExcludedFromRewards[rewardReceiver] = true;
+        s_isExcludedFromRewards[address(this)] = true;
+        s_isExcludedFromRewards[address(0)] = true;
 
         _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
     }
@@ -254,14 +253,14 @@ contract RayFiToken is ERC20, Ownable {
     ///////////////////////////
 
     /**
-     * @notice This function allows users to stake their RayFi tokens to have their dividends reinvested in RayFi
+     * @notice This function allows users to stake their RayFi tokens to have their rewards reinvested in RayFi
      * @param value The amount of tokens to stake
      */
     function stake(uint256 value) external {
-        uint256 minimumTokenBalanceForDividends = s_minimumTokenBalanceForDividends;
+        uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
         value += s_stakedBalances[msg.sender];
-        if (minimumTokenBalanceForDividends >= value + 1) {
-            revert RayFi__InsufficientTokensToStake(value, minimumTokenBalanceForDividends);
+        if (minimumTokenBalanceForRewards >= value + 1) {
+            revert RayFi__InsufficientTokensToStake(value, minimumTokenBalanceForRewards);
         }
 
         super._update(msg.sender, address(this), value);
@@ -285,24 +284,24 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice High-level function to start the dividend distribution process in either stateful or stateless mode
+     * @notice High-level function to start the reward distribution process in either stateful or stateless mode
      * The stateless mode is always the preferred one, as it is drastically more gas-efficient
      * The stateful mode is a backup to use only in case the stateless mode is unable to complete the distribution
-     * Dividends are either sent to users as stablecoins or reinvested into RayFi for users who have staked their tokens
+     * Rewards are either sent to users as stablecoins or reinvested into RayFi for users who have staked their tokens
      * @dev In each distribution, there is a small amount of stablecoins not distributed,
      * the magnified amount of which is `(amount * MAGNITUDE) % totalSupply()`
      * With a well-chosen `MAGNITUDE`, this amount (de-magnified) can be less than 1 wei
      * We can actually keep track of the undistributed stablecoins for the next distribution,
      * but keeping track of such data on-chain costs much more than the saved stablecoins, so we do not do that
-     * @param gasForDividends The amount of gas to use for processing dividends in a stateful
+     * @param gasForRewards The amount of gas to use for processing rewards in a stateful
      * This is a safety mechanism to prevent the contract from running out of gas at an inconvenient time
-     * `gasForDividends` should be set to a value that is less than the gas limit of the transaction
+     * `gasForRewards` should be set to a value that is less than the gas limit of the transaction
      * This parameter is ignored in stateless mode
      * @param isStateful Whether to save the state of the distribution to resume it later
      */
-    function distributeDividends(uint256 gasForDividends, bool isStateful) external onlyOwner {
-        uint256 totalUnclaimedDividends = ERC20(s_dividendToken).balanceOf(address(this));
-        if (totalUnclaimedDividends <= 0) {
+    function distributeRewards(uint256 gasForRewards, bool isStateful) external onlyOwner {
+        uint256 totalUnclaimedRewards = ERC20(s_rewardToken).balanceOf(address(this));
+        if (totalUnclaimedRewards <= 0) {
             revert RayFi__NothingToDistribute();
         }
 
@@ -311,40 +310,40 @@ contract RayFiToken is ERC20, Ownable {
             revert RayFi__ZeroShareholders();
         }
 
-        uint256 magnifiedDividendPerShare;
+        uint256 magnifiedRewardPerShare;
         uint256 magnifiedRayFiPerShare;
 
         uint256 totalStakedAmount = s_totalStakedAmount;
         if (totalStakedAmount >= 1) {
-            uint256 dividendsToReinvest = totalUnclaimedDividends * totalStakedAmount / totalSharesAmount;
-            address dividendReceiver = s_dividendReceiver;
-            _swapDividendsForRayFi(dividendReceiver, dividendsToReinvest);
+            uint256 rewardsToReinvest = totalUnclaimedRewards * totalStakedAmount / totalSharesAmount;
+            address rewardReceiver = s_rewardReceiver;
+            _swapRewardsForRayFi(rewardReceiver, rewardsToReinvest);
 
-            uint256 rayFiToDistribute = balanceOf(dividendReceiver);
-            uint256 dividendsToDistribute = totalUnclaimedDividends - dividendsToReinvest;
+            uint256 rayFiToDistribute = balanceOf(rewardReceiver);
+            uint256 rewardsToDistribute = totalUnclaimedRewards - rewardsToReinvest;
 
             uint256 totalNonStakedAmount = totalSharesAmount - totalStakedAmount;
-            magnifiedDividendPerShare =
-                totalNonStakedAmount >= 1 ? _calculateDividendPerShare(dividendsToDistribute, totalNonStakedAmount) : 0;
-            magnifiedRayFiPerShare = _calculateDividendPerShare(rayFiToDistribute, totalStakedAmount);
+            magnifiedRewardPerShare =
+                totalNonStakedAmount >= 1 ? _calculateRewardPerShare(rewardsToDistribute, totalNonStakedAmount) : 0;
+            magnifiedRayFiPerShare = _calculateRewardPerShare(rayFiToDistribute, totalStakedAmount);
         } else {
-            magnifiedDividendPerShare = _calculateDividendPerShare(totalUnclaimedDividends, totalSharesAmount);
+            magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalSharesAmount);
         }
 
-            if (isStateful) {
-                uint256 lastMagnifiedDividendPerShare = s_magnifiedDividendPerShare;
-                uint256 lastMagnifiedRayFiPerShare = s_magnifiedRayFiPerShare;
-                if (lastMagnifiedDividendPerShare >= 1 || lastMagnifiedRayFiPerShare >= 1) {
-                    // Distribute the undistributed dividends from the last cycle
-                    magnifiedDividendPerShare = lastMagnifiedDividendPerShare;
-                    magnifiedRayFiPerShare = lastMagnifiedRayFiPerShare;
-                } else {
-                    s_magnifiedDividendPerShare = magnifiedRayFiPerShare;
-                    s_magnifiedRayFiPerShare = magnifiedDividendPerShare;
-                }
+        if (isStateful) {
+            uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
+            uint256 lastMagnifiedRayFiPerShare = s_magnifiedRayFiPerShare;
+            if (lastMagnifiedRewardPerShare >= 1 || lastMagnifiedRayFiPerShare >= 1) {
+                // Distribute the undistributed rewards from the last cycle
+                magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
+                magnifiedRayFiPerShare = lastMagnifiedRayFiPerShare;
+            } else {
+                s_magnifiedRewardPerShare = magnifiedRayFiPerShare;
+                s_magnifiedRayFiPerShare = magnifiedRewardPerShare;
             }
+        }
 
-            _processDividends(gasForDividends, magnifiedDividendPerShare, magnifiedRayFiPerShare, isStateful);
+        _processRewards(gasForRewards, magnifiedRewardPerShare, magnifiedRayFiPerShare, isStateful);
     }
 
     /**
@@ -375,27 +374,27 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Sets the minimum token balance for dividends
-     * @param newMinimum The new minimum token balance for dividends
+     * @notice Sets the minimum token balance for rewards
+     * @param newMinimum The new minimum token balance for rewards
      */
-    function setMinimumTokenBalanceForDividends(uint256 newMinimum) external onlyOwner {
-        uint256 oldMinimum = s_minimumTokenBalanceForDividends;
-        s_minimumTokenBalanceForDividends = newMinimum;
-        emit MinimumTokenBalanceForDividendsUpdated(newMinimum, oldMinimum);
+    function setMinimumTokenBalanceForRewards(uint256 newMinimum) external onlyOwner {
+        uint256 oldMinimum = s_minimumTokenBalanceForRewards;
+        s_minimumTokenBalanceForRewards = newMinimum;
+        emit MinimumTokenBalanceForRewardsUpdated(newMinimum, oldMinimum);
     }
 
     /**
-     * @notice Sets whether an address is excluded from dividends
+     * @notice Sets whether an address is excluded from rewards
      * @param user The address to update
-     * @param isExcluded Whether the address is excluded from dividends
+     * @param isExcluded Whether the address is excluded from rewards
      */
-    function setIsExcludedFromDividends(address user, bool isExcluded) external onlyOwner {
-        s_isExcludedFromDividends[user] = isExcluded;
+    function setIsExcludedFromRewards(address user, bool isExcluded) external onlyOwner {
+        s_isExcludedFromRewards[user] = isExcluded;
         if (s_shareholders.contains(user)) {
             s_shareholders.remove(user);
             s_totalSharesAmount -= balanceOf(user);
         }
-        emit IsUserExcludedFromDividendsUpdated(user, isExcluded);
+        emit IsUserExcludedFromRewardsUpdated(user, isExcluded);
     }
 
     /**
@@ -409,20 +408,20 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Sets the address of the token that will be distributed as dividends
-     * @param newDividendToken The address of the new dividend token
+     * @notice Sets the address of the token that will be distributed as rewards
+     * @param newRewardToken The address of the new reward token
      */
-    function setDividendToken(address newDividendToken) external onlyOwner {
-        if (newDividendToken == address(0)) {
+    function setRewardToken(address newRewardToken) external onlyOwner {
+        if (newRewardToken == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
-        address oldDividendToken = s_dividendToken;
-        s_dividendToken = newDividendToken;
-        emit DividendTokenUpdated(newDividendToken, oldDividendToken);
+        address oldRewardToken = s_rewardToken;
+        s_rewardToken = newRewardToken;
+        emit RewardTokenUpdated(newRewardToken, oldRewardToken);
     }
 
     /**
-     * @notice Sets the address of the router that will be used to reinvest dividends
+     * @notice Sets the address of the router that will be used to reinvest rewards
      * @param newRouter The address of the new router
      */
     function setRouter(address newRouter) external onlyOwner {
@@ -448,16 +447,16 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Sets the address of the wallet that will receive swapped dividends
-     * @param newDividendReceiver The address of the new dividend receiver
+     * @notice Sets the address of the wallet that will receive swapped rewards
+     * @param newRewardReceiver The address of the new reward receiver
      */
-    function setDividendReceiver(address newDividendReceiver) external onlyOwner {
-        if (newDividendReceiver == address(0)) {
+    function setRewardReceiver(address newRewardReceiver) external onlyOwner {
+        if (newRewardReceiver == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
         }
-        address oldDividendReceiver = s_dividendReceiver;
-        s_dividendReceiver = newDividendReceiver;
-        emit DividendReceiverUpdated(newDividendReceiver, oldDividendReceiver);
+        address oldRewardReceiver = s_rewardReceiver;
+        s_rewardReceiver = newRewardReceiver;
+        emit RewardReceiverUpdated(newRewardReceiver, oldRewardReceiver);
     }
 
     ////////////////////////////////
@@ -474,7 +473,7 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @notice Get the total amount of shares owned by a user
-     * @dev This is expected to be 0 if `balanceOf(user)` < `s_minimumTokenBalanceForDividends`
+     * @dev This is expected to be 0 if `balanceOf(user)` < `s_minimumTokenBalanceForRewards`
      * @return The total shares amount
      */
     function getSharesBalanceOf(address user) external view returns (uint256) {
@@ -499,27 +498,19 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Get the minimum token balance required to start earning dividends
-     * @return The minimum token balance for dividends
+     * @notice Get the minimum token balance required to start earning rewards
+     * @return The minimum token balance for rewards
      */
-    function getMinimumTokenBalanceForDividends() external view returns (uint256) {
-        return s_minimumTokenBalanceForDividends;
+    function getMinimumTokenBalanceForRewards() external view returns (uint256) {
+        return s_minimumTokenBalanceForRewards;
     }
 
     /**
-     * @notice Returns the total amount of dividends distributed by the contract
-     *
+     * @notice Get the address of the token that will be distributed as rewards
+     * @return The address of the reward token
      */
-    function getTotalDividendsDistributed() external view returns (uint256) {
-        return s_totalDividendsDistributed;
-    }
-
-    /**
-     * @notice Get the address of the token that will be distributed as dividends
-     * @return The address of the dividend token
-     */
-    function getDividendToken() external view returns (address) {
-        return s_dividendToken;
+    function getRewardToken() external view returns (address) {
+        return s_rewardToken;
     }
 
     /**
@@ -551,7 +542,7 @@ contract RayFiToken is ERC20, Ownable {
     //////////////////////////
 
     /**
-     * @dev Overrides the internal `_update` function to include fee logic and update the dividend tracker
+     * @dev Overrides the internal `_update` function to include fee logic and update the reward tracker
      * @param from The address of the sender
      * @param to The address of the recipient
      * @param value The amount of tokens to transfer
@@ -582,7 +573,7 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @dev Takes a fee from the transaction and updates the dividend tracker
+     * @dev Takes a fee from the transaction and updates the reward tracker
      * @param from The address of the sender
      * @param value The amount of tokens to take the fee from
      * @param fee The fee percentage to take
@@ -601,7 +592,7 @@ contract RayFiToken is ERC20, Ownable {
     function _updateShareholder(address shareholder) private {
         uint256 balance = balanceOf(shareholder);
         uint256 totalBalance = balance + s_stakedBalances[shareholder];
-        if (totalBalance >= s_minimumTokenBalanceForDividends && !s_isExcludedFromDividends[shareholder]) {
+        if (totalBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
             (bool success, uint256 oldBalance) = s_shareholders.tryGet(shareholder);
             if (!success) {
                 s_totalSharesAmount += totalBalance;
@@ -641,18 +632,18 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to swap dividends for RayFi tokens
-     * We have to send the output of the swap to a separate wallet `dividendReceiver`
+     * @dev Low-level function to swap rewards for RayFi tokens
+     * We have to send the output of the swap to a separate wallet `rewardReceiver`
      * This is because V2 pools disallow setting the recipient of a swap as one of the tokens being swapped
-     * @param dividendReceiver The address of the wallet that will receive the swapped dividends
-     * @param amount The amount of dividends to swap
+     * @param rewardReceiver The address of the wallet that will receive the swapped rewards
+     * @param amount The amount of rewards to swap
      */
-    function _swapDividendsForRayFi(address dividendReceiver, uint256 amount) private {
-        address dividendToken = s_dividendToken;
-        ERC20(dividendToken).approve(address(s_router), amount);
+    function _swapRewardsForRayFi(address rewardReceiver, uint256 amount) private {
+        address rewardToken = s_rewardToken;
+        ERC20(rewardToken).approve(address(s_router), amount);
 
         address[] memory path = new address[](2);
-        path[0] = dividendToken;
+        path[0] = rewardToken;
         path[1] = address(this);
         (bool success,) = s_router.call(
             abi.encodeWithSignature(
@@ -660,7 +651,7 @@ contract RayFiToken is ERC20, Ownable {
                 amount,
                 0,
                 path,
-                dividendReceiver,
+                rewardReceiver,
                 block.timestamp
             )
         );
@@ -670,71 +661,69 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to process dividends for all token holders in either stateful or stateless mode
-     * @param gasForDividends The amount of gas to use for processing dividends
-     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
+     * @param gasForRewards The amount of gas to use for processing rewards
+     * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      * @param isStateful Whether to save the state of the distribution
      */
-    function _processDividends(
-        uint256 gasForDividends,
-        uint256 magnifiedDividendPerShare,
+    function _processRewards(
+        uint256 gasForRewards,
+        uint256 magnifiedRewardPerShare,
         uint256 magnifiedRayFiPerShare,
         bool isStateful
     ) private {
         uint256 shareholderCount = s_shareholders.length();
         if (isStateful) {
-            _runDividendLoopStateFul(
-                gasForDividends, shareholderCount, magnifiedDividendPerShare, magnifiedRayFiPerShare
-            );
+            _runRewardLoopStateFul(gasForRewards, shareholderCount, magnifiedRewardPerShare, magnifiedRayFiPerShare);
         } else {
-            uint256 withdrawnDividends;
+            uint256 withdrawnRewards;
             uint256 stakedRayFi;
             for (uint256 i; i < shareholderCount; ++i) {
                 (address user,) = s_shareholders.at(i);
-                (uint256 withdrawnDividendOfUser, uint256 stakedRayFiOfUser) =
-                    _processDividendOfUserStateless(user, magnifiedDividendPerShare, magnifiedRayFiPerShare);
-                withdrawnDividends += withdrawnDividendOfUser;
+                (uint256 withdrawnRewardOfUser, uint256 stakedRayFiOfUser) =
+                    _processRewardOfUserStateless(user, magnifiedRewardPerShare, magnifiedRayFiPerShare);
+                withdrawnRewards += withdrawnRewardOfUser;
                 stakedRayFi += stakedRayFiOfUser;
             }
 
             if (stakedRayFi >= 1) {
-                super._update(s_dividendReceiver, address(this), stakedRayFi);
+                super._update(s_rewardReceiver, address(this), stakedRayFi);
                 s_totalStakedAmount += stakedRayFi;
             }
 
-            emit DividendsDistributed(withdrawnDividends, stakedRayFi);
+            emit RewardsDistributed(withdrawnRewards, stakedRayFi);
         }
     }
 
     /**
-     * @dev Low-level function to run the dividend distribution loop in a stateful manner
-     * @param gasForDividends The amount of gas to use for processing dividends
+     * @dev Low-level function to run the reward distribution loop in a stateful manner
+     * @param gasForRewards The amount of gas to use for processing rewards
      * @param shareholderCount The total number of shareholders
-     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
-    function _runDividendLoopStateFul(
-        uint256 gasForDividends,
+    function _runRewardLoopStateFul(
+        uint256 gasForRewards,
         uint256 shareholderCount,
-        uint256 magnifiedDividendPerShare,
+        uint256 magnifiedRewardPerShare,
         uint256 magnifiedRayFiPerShare
     ) private {
         uint256 startingGas = gasleft();
-        if (gasForDividends >= startingGas) {
-            revert RayFi__InsufficientGas(gasForDividends, startingGas);
+        if (gasForRewards >= startingGas) {
+            revert RayFi__InsufficientGas(gasForRewards, startingGas);
         }
 
         uint256 lastProcessedIndex = s_lastProcessedIndex;
         uint256 gasUsed;
-        while (gasUsed < gasForDividends) {
+        while (gasUsed < gasForRewards) {
             (address user,) = s_shareholders.at(lastProcessedIndex);
-            _processDividendOfUserStateFul(user, magnifiedDividendPerShare, magnifiedRayFiPerShare);
+            _processRewardOfUserStateFul(user, magnifiedRewardPerShare, magnifiedRayFiPerShare);
 
             ++lastProcessedIndex;
             if (lastProcessedIndex >= shareholderCount) {
                 delete lastProcessedIndex;
-                delete s_magnifiedDividendPerShare;
+                delete s_magnifiedRewardPerShare;
                 delete s_magnifiedRayFiPerShare;
 
                 break;
@@ -746,21 +735,21 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Processes dividends for a specific token holder
+     * @notice Processes rewards for a specific token holder
      * @param user The address of the token holder
-     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
-    function _processDividendOfUserStateless(
+    function _processRewardOfUserStateless(
         address user,
-        uint256 magnifiedDividendPerShare,
+        uint256 magnifiedRewardPerShare,
         uint256 magnifiedRayFiPerShare
-    ) private returns (uint256 withdrawableDividend, uint256 reinvestableRayFi) {
-        withdrawableDividend = _calculateDividend(magnifiedDividendPerShare, balanceOf(user));
-        reinvestableRayFi = _calculateDividend(magnifiedRayFiPerShare, s_stakedBalances[user]);
+    ) private returns (uint256 withdrawableReward, uint256 reinvestableRayFi) {
+        withdrawableReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user));
+        reinvestableRayFi = _calculateReward(magnifiedRayFiPerShare, s_stakedBalances[user]);
 
-        if (withdrawableDividend >= 1) {
-            ERC20(s_dividendToken).transfer(user, withdrawableDividend);
+        if (withdrawableReward >= 1) {
+            ERC20(s_rewardToken).transfer(user, withdrawableReward);
         }
         if (reinvestableRayFi >= 1) {
             unchecked {
@@ -770,39 +759,37 @@ contract RayFiToken is ERC20, Ownable {
     }
 
     /**
-     * @notice Processes dividends for a specific token holder, saving the state of the distribution to storage
+     * @notice Processes rewards for a specific token holder, saving the state of the distribution to storage
      * @param user The address of the token holder
-     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
-    function _processDividendOfUserStateFul(
-        address user,
-        uint256 magnifiedDividendPerShare,
-        uint256 magnifiedRayFiPerShare
-    ) private {
-        uint256 withdrawableDividend =
-            _calculateDividend(magnifiedDividendPerShare, balanceOf(user)) - s_withdrawnDividends[user];
+    function _processRewardOfUserStateFul(address user, uint256 magnifiedRewardPerShare, uint256 magnifiedRayFiPerShare)
+        private
+    {
+        uint256 withdrawableReward =
+            _calculateReward(magnifiedRewardPerShare, balanceOf(user)) - s_withdrawnRewards[user];
         uint256 reinvestableRayFi =
-            _calculateDividend(magnifiedRayFiPerShare, s_stakedBalances[user]) - s_reinvestedRayFi[user];
+            _calculateReward(magnifiedRayFiPerShare, s_stakedBalances[user]) - s_reinvestedRayFi[user];
 
-        if (withdrawableDividend >= 1) {
-            s_withdrawnDividends[user] += withdrawableDividend;
+        if (withdrawableReward >= 1) {
+            s_withdrawnRewards[user] += withdrawableReward;
 
-            (bool success) = ERC20(s_dividendToken).transfer(user, withdrawableDividend);
+            (bool success) = ERC20(s_rewardToken).transfer(user, withdrawableReward);
 
             if (!success) {
-                s_withdrawnDividends[user] -= withdrawableDividend;
+                s_withdrawnRewards[user] -= withdrawableReward;
             } else {
-                emit DividendsWithdrawn(user, withdrawableDividend);
+                emit RewardsWithdrawn(user, withdrawableReward);
             }
         }
         if (reinvestableRayFi >= 1) {
             s_reinvestedRayFi[user] += reinvestableRayFi;
 
-            super._update(s_dividendReceiver, address(this), reinvestableRayFi);
+            super._update(s_rewardReceiver, address(this), reinvestableRayFi);
             _stake(user, reinvestableRayFi);
 
-            emit DividendsReinvested(user, reinvestableRayFi);
+            emit RewardsReinvested(user, reinvestableRayFi);
         }
     }
 
@@ -811,22 +798,22 @@ contract RayFiToken is ERC20, Ownable {
     //////////////////////////////////////
 
     /**
-     * @dev Low-level function to de-magnify the dividend amount per share for a given balance
-     * @param magnifiedDividendPerShare The magnified dividend amount per share
+     * @dev Low-level function to de-magnify the reward amount per share for a given balance
+     * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param balance The balance to use as reference
-     * @return The de-magnified dividend amount
+     * @return The de-magnified reward amount
      */
-    function _calculateDividend(uint256 magnifiedDividendPerShare, uint256 balance) private pure returns (uint256) {
-        return magnifiedDividendPerShare * balance / MAGNITUDE;
+    function _calculateReward(uint256 magnifiedRewardPerShare, uint256 balance) private pure returns (uint256) {
+        return magnifiedRewardPerShare * balance / MAGNITUDE;
     }
 
     /**
-     * @dev Low-level function to calculate the magnified amount of dividend per share
-     * @param totalDividends The total amount of dividends
+     * @dev Low-level function to calculate the magnified amount of reward per share
+     * @param totalRewards The total amount of rewards
      * @param totalShares The total amount of shares
-     * @return The magnified amount of dividend per share
+     * @return The magnified amount of reward per share
      */
-    function _calculateDividendPerShare(uint256 totalDividends, uint256 totalShares) private pure returns (uint256) {
-        return totalDividends * MAGNITUDE / totalShares;
+    function _calculateRewardPerShare(uint256 totalRewards, uint256 totalShares) private pure returns (uint256) {
+        return totalRewards * MAGNITUDE / totalShares;
     }
 }
