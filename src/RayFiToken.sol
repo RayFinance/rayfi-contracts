@@ -307,9 +307,13 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to unstake
      */
     function unstake(address vault, uint256 value) external {
-        uint256 stakedBalance = s_vaults[vault].stakedBalances[msg.sender];
-        if (stakedBalance < value) {
-            revert RayFi__InsufficientStakedBalance(stakedBalance, value);
+        uint256 stakedBalanceBefore = s_vaults[vault].stakedBalances[msg.sender];
+        uint256 stakedBalanceAfter = stakedBalanceBefore - value;
+        uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
+        if (stakedBalanceBefore < value) {
+            revert RayFi__InsufficientStakedBalance(stakedBalanceBefore, value);
+} else if (stakedBalanceAfter < minimumTokenBalanceForRewards) {
+            revert RayFi__InsufficientTokensToStake(stakedBalanceAfter, minimumTokenBalanceForRewards);
         }
 
         _unstake(vault, msg.sender, value);
