@@ -763,35 +763,61 @@ s_stakedBalances[user] -= value;
      * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
      * @param gasForRewards The amount of gas to use for processing rewards
      * @param magnifiedRewardPerShare The magnified reward amount per share
-     * @param magnifiedRayFiPerShare The magnified RayFi amount per share
+     * @param rewardToken The address of the reward token
      * @param isStateful Whether to save the state of the distribution
      */
     function _processRewards(
         uint256 gasForRewards,
         uint256 magnifiedRewardPerShare,
-        uint256 magnifiedRayFiPerShare,
+        address rewardToken,
         bool isStateful
     ) private {
         uint256 shareholderCount = s_shareholders.length();
         if (isStateful) {
-            _runRewardLoopStateFul(gasForRewards, shareholderCount, magnifiedRewardPerShare, magnifiedRayFiPerShare);
+            _runRewardLoopStateFul(gasForRewards, shareholderCount, magnifiedRewardPerShare, 0);
         } else {
             uint256 withdrawnRewards;
-            uint256 stakedRayFi;
-            for (uint256 i; i < shareholderCount; ++i) {
+                        for (uint256 i; i < shareholderCount; ++i) {
                 (address user,) = s_shareholders.at(i);
-                (uint256 withdrawnRewardOfUser, uint256 stakedRayFiOfUser) =
-                    _processRewardOfUserStateless(user, magnifiedRewardPerShare, magnifiedRayFiPerShare);
-                withdrawnRewards += withdrawnRewardOfUser;
-                stakedRayFi += stakedRayFiOfUser;
+                withdrawnRewards += _processRewardOfUserStateless(user, magnifiedRewardPerShare, rewardToken);
             }
 
-            if (stakedRayFi >= 1) {
-                super._update(s_rewardReceiver, address(this), stakedRayFi);
-                s_totalStakedAmount += stakedRayFi;
+            emit RewardsDistributed(withdrawnRewards, 0);
+        }
+    }
+
+    /**
+     * @dev Low-level function to process rewards a specific vault in either stateful or stateless mode
+     * @param gasForRewards The amount of gas to use for processing rewards
+     * @param magnifiedVaultTokensPerShare The magnified reward amount per share
+     * @param vaultToken The address of the vault token
+     * @param isStateful Whether to save the state of the distribution
+     */
+    function _processVault(
+        uint256 gasForRewards,
+        uint256 magnifiedVaultTokensPerShare,
+        address vaultToken,
+        bool isStateful
+    ) private {
+        address[] memory vaultUsers = s_vaults[vaultToken].users;
+        uint256 userCount = vaultUsers.length;
+        if (isStateful) {
+            _runRewardLoopStateFul(gasForRewards, userCount, magnifiedVaultTokensPerShare, 0);
+        } else {
+            uint256 withdrawnRewards;
+            for (uint256 i; i < userCount; ++i) {
+                withdrawnRewards +=
+                    _processVaultOfUserStateless(vaultUsers[i], magnifiedVaultTokensPerShare, vaultToken);
             }
 
-            emit RewardsDistributed(withdrawnRewards, stakedRayFi);
+            if (vaultToken == address(this)) {
+                super._update(s_swapReceiver, address(this), withdrawnRewards);
+                s_totalStakedAmount += withdrawnRewards;
+            } else {
+                s_vaults[vaultToken].totalStakedAmount += withdrawnRewards;
+            }
+
+            emit RewardsDistributed(0, withdrawnRewards);
         }
     }
 
@@ -837,22 +863,35 @@ s_stakedBalances[user] -= value;
      * @notice Processes rewards for a specific token holder
      * @param user The address of the token holder
      * @param magnifiedRewardPerShare The magnified reward amount per share
-     * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
-    function _processRewardOfUserStateless(
-        address user,
-        uint256 magnifiedRewardPerShare,
-        uint256 magnifiedRayFiPerShare
-    ) private returns (uint256 withdrawableReward, uint256 reinvestableRayFi) {
+    function _processRewardOfUserStateless(address user, uint256 magnifiedRewardPerShare, address rewardToken)
+        private
+        returns (uint256 withdrawableReward)
+    {
         withdrawableReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user));
-        reinvestableRayFi = _calculateReward(magnifiedRayFiPerShare, s_stakedBalances[user]);
-
-        if (withdrawableReward >= 1) {
-            ERC20(s_rewardToken).transfer(user, withdrawableReward);
+                if (withdrawableReward >= 1) {
+            ERC20(rewardToken).transfer(user, withdrawableReward);
         }
-        if (reinvestableRayFi >= 1) {
+        }
+
+    /**
+     * @notice Processes rewards for a specific token holder for a specific vault
+     * @param user The address of the token holder
+     * @param magnifiedVaultTokensPerShare The magnified reward amount per share
+     * @param vaultToken The address of the vault token
+     */
+    function _processVaultOfUserStateless(address user, uint256 magnifiedVaultTokensPerShare, address vaultToken)
+        private
+        returns (uint256 withdrawableReward)
+    {
+        withdrawableReward = _calculateReward(magnifiedVaultTokensPerShare, s_vaults[vaultToken].stakedBalances[user]);
+        if (withdrawableReward >= 1) {
+            if (vaultToken != address(this)) {
+                ERC20(vaultToken).transfer(user, withdrawableReward);
+            } else {
             unchecked {
-                s_stakedBalances[user] += reinvestableRayFi;
+                s_stakedBalances[user] += withdrawableReward;
+                }
             }
         }
     }
@@ -885,7 +924,7 @@ s_stakedBalances[user] -= value;
         if (reinvestableRayFi >= 1) {
             s_reinvestedRayFi[user] += reinvestableRayFi;
 
-            super._update(s_rewardReceiver, address(this), reinvestableRayFi);
+            super._update(s_swapReceiver, address(this), reinvestableRayFi);
             // _stake(user, reinvestableRayFi);
 
             emit RewardsReinvested(user, reinvestableRayFi);
