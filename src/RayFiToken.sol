@@ -284,29 +284,31 @@ contract RayFiToken is ERC20, Ownable {
      * @notice This function allows users to stake their RayFi tokens to have their rewards reinvested in RayFi
      * @param value The amount of tokens to stake
      */
-    function stake(uint256 value) external {
+    function stake(address vault, uint256 value) external {
         uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
-        value += s_stakedBalances[msg.sender];
-        if (minimumTokenBalanceForRewards >= value + 1) {
+        if (value < minimumTokenBalanceForRewards) {
             revert RayFi__InsufficientTokensToStake(value, minimumTokenBalanceForRewards);
+        } else if (s_vaults[vault].vaultId <= 0) {
+            revert RayFi__VaultDoesNotExist(vault);
         }
 
         super._update(msg.sender, address(this), value);
-        _stake(msg.sender, value);
+        _stake(vault, msg.sender, value);
         _updateShareholder(msg.sender);
     }
 
     /**
      * @notice This function allows users to unstake their RayFi tokens
+     * @dev We do not check if the vault exists so that users may withdraw from a vault that has been removed
      * @param value The amount of tokens to unstake
      */
-    function unstake(uint256 value) external {
-        uint256 stakedBalance = s_stakedBalances[msg.sender];
-        if (value >= stakedBalance + 1) {
+    function unstake(address vault, uint256 value) external {
+        uint256 stakedBalance = s_vaults[vault].stakedBalances[msg.sender];
+        if (stakedBalance < value) {
             revert RayFi__InsufficientStakedBalance(stakedBalance, value);
         }
 
-        _unstake(msg.sender, value);
+        _unstake(vault, msg.sender, value);
         super._update(address(this), msg.sender, value);
         _updateShareholder(msg.sender);
     }
@@ -675,12 +677,13 @@ contract RayFiToken is ERC20, Ownable {
 
     /**
      * @dev Low-level function to stake RayFi tokens
-     * Assumes that `_balances` have already been updated
+     * Assumes that `_balances` have already been updated and that the vault exists
      * @param user The address of the user to stake the RayFi tokens for
      * @param value The amount of RayFi tokens to stake
      */
-    function _stake(address user, uint256 value) private {
-        s_stakedBalances[user] += value;
+    function _stake(address vault, address user, uint256 value) private {
+        s_vaults[vault].stakedBalances[user] += value;
+        s_vaults[vault].totalStakedAmount += value;
         s_totalStakedAmount += value;
 
         emit RayFiStaked(user, value, s_totalStakedAmount);
@@ -691,8 +694,9 @@ contract RayFiToken is ERC20, Ownable {
      * @param user The address of the user to unstake the RayFi tokens for
      * @param value The amount of RayFi tokens to unstake
      */
-    function _unstake(address user, uint256 value) private {
-        s_stakedBalances[user] -= value;
+    function _unstake(address vault, address user, uint256 value) private {
+        s_vaults[vault].stakedBalances[user] -= value;
+        s_vaults[vault].totalStakedAmount -= value;
         s_totalStakedAmount -= value;
 
         emit RayFiUnstaked(user, value, s_totalStakedAmount);
@@ -854,7 +858,7 @@ contract RayFiToken is ERC20, Ownable {
             s_reinvestedRayFi[user] += reinvestableRayFi;
 
             super._update(s_rewardReceiver, address(this), reinvestableRayFi);
-            _stake(user, reinvestableRayFi);
+            // _stake(user, reinvestableRayFi);
 
             emit RewardsReinvested(user, reinvestableRayFi);
         }
