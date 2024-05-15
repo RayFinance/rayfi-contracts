@@ -215,11 +215,10 @@ contract RayFiToken is ERC20, Ownable {
     error RayFi__InsufficientStakedBalance(uint256 stakedAmount, uint256 unstakeAmount);
 
     /**
-     * @notice Indicates a failure in staking tokens due to the input amount being too low
-     * @param tokenAmount The amount of tokens the sender is trying to stake
+     * @notice Indicates a failure in staking tokens due to not having enough tokens
      * @param minimumTokenBalance The minimum amount of tokens required to stake
      */
-    error RayFi__InsufficientTokensToStake(uint256 tokenAmount, uint256 minimumTokenBalance);
+    error RayFi__InsufficientTokensToStake(uint256 minimumTokenBalance);
 
     /**
      * @dev Triggered when trying to process rewards, but not enough gas was sent with the transaction
@@ -289,9 +288,8 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to stake
      */
     function stake(address vault, uint256 value) external {
-        uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
-        if (value < minimumTokenBalanceForRewards) {
-            revert RayFi__InsufficientTokensToStake(value, minimumTokenBalanceForRewards);
+        if (!s_shareholders.contains(msg.sender)) {
+            revert RayFi__InsufficientTokensToStake(s_minimumTokenBalanceForRewards);
         } else if (s_vaults[vault].vaultId <= 0) {
             revert RayFi__VaultDoesNotExist(vault);
         }
@@ -307,13 +305,9 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to unstake
      */
     function unstake(address vault, uint256 value) external {
-        uint256 stakedBalanceBefore = s_vaults[vault].vaultBalances[msg.sender];
-        uint256 stakedBalanceAfter = stakedBalanceBefore - value;
-        uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
-        if (stakedBalanceBefore < value) {
-            revert RayFi__InsufficientStakedBalance(stakedBalanceBefore, value);
-        } else if (stakedBalanceAfter != 0 && stakedBalanceAfter < minimumTokenBalanceForRewards) {
-            revert RayFi__InsufficientTokensToStake(stakedBalanceAfter, minimumTokenBalanceForRewards);
+        uint256 stakedBalance = s_vaults[vault].vaultBalances[msg.sender];
+        if (stakedBalance < value) {
+            revert RayFi__InsufficientStakedBalance(stakedBalance, value);
         }
 
         _unstake(vault, msg.sender, value);
@@ -336,6 +330,7 @@ contract RayFiToken is ERC20, Ownable {
      * `gasForRewards` should be set to a value that is less than the gas limit of the transaction
      * This parameter is ignored in stateless mode
      * @param isStateful Whether to save the state of the distribution to resume it later
+     * @param slippage The maximum acceptable percentage slippage for the swaps
      * @param vaultTokens The list of vaults to distribute rewards to, can be left empty to distribute to all vaults
      */
     function distributeRewards(uint32 gasForRewards, bool isStateful, uint8 slippage, address[] memory vaultTokens)
@@ -359,8 +354,7 @@ contract RayFiToken is ERC20, Ownable {
                 vaultTokens = s_vaultTokens;
             }
 
-            uint256 totalRewardsToReinvest =
-                totalUnclaimedRewards * totalStakedShares / (totalRewardShares + totalStakedShares);
+            uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
 
             _runVaultLoop(
                 vaultTokens, rewardToken, totalRewardsToReinvest, totalStakedShares, slippage, gasForRewards, isStateful
@@ -675,17 +669,18 @@ contract RayFiToken is ERC20, Ownable {
      */
     function _updateShareholder(address shareholder) private {
         uint256 newBalance = balanceOf(shareholder);
-        if (newBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
+        uint256 totalBalance = newBalance + s_stakedBalances[shareholder];
+        if (totalBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
             (bool success, uint256 oldBalance) = s_shareholders.tryGet(shareholder);
             if (!success) {
-                s_totalRewardShares += newBalance;
+                s_totalRewardShares += totalBalance;
             } else {
-                s_totalRewardShares += newBalance - oldBalance;
+                s_totalRewardShares = s_totalRewardShares + totalBalance - oldBalance;
             }
             s_shareholders.set(shareholder, newBalance);
         } else {
             s_shareholders.remove(shareholder);
-            s_totalRewardShares -= newBalance;
+            s_totalRewardShares -= totalBalance;
         }
     }
 
@@ -696,14 +691,15 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of RayFi tokens to stake
      */
     function _stake(address vaultToken, address user, uint256 value) private {
-        uint256 position = s_vaults[vaultToken].positions[user];
+        Vault storage vault = s_vaults[vaultToken];
+        uint256 position = vault.positions[user];
         if (position == 0) {
-            position = s_vaults[vaultToken].users.length;
-            s_vaults[vaultToken].users.push(user);
+            vault.users.push(user);
+            vault.positions[user] = vault.users.length;
         }
 
-        s_vaults[vaultToken].vaultBalances[user] += value;
-        s_vaults[vaultToken].totalVaultShares += value;
+        vault.vaultBalances[user] += value;
+        vault.totalVaultShares += value;
         s_stakedBalances[user] += value;
         s_totalStakedShares += value;
 
@@ -716,13 +712,13 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of RayFi tokens to unstake
      */
     function _unstake(address vaultToken, address user, uint256 value) private {
-        s_vaults[vaultToken].vaultBalances[user] -= value;
-        s_vaults[vaultToken].totalVaultShares -= value;
+        Vault storage vault = s_vaults[vaultToken];
+        vault.vaultBalances[user] -= value;
+        vault.totalVaultShares -= value;
         s_stakedBalances[user] -= value;
         s_totalStakedShares -= value;
 
-        if (s_vaults[vaultToken].vaultBalances[user] <= 0) {
-            Vault storage vault = s_vaults[vaultToken];
+        if (vault.vaultBalances[user] <= 0) {
             uint256 userIndex = vault.positions[user] - 1;
             uint256 lastIndex = vault.users.length - 1;
             if (userIndex != lastIndex) {
