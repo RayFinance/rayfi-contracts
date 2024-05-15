@@ -23,11 +23,11 @@ contract RayFiToken is ERC20, Ownable {
     struct Vault {
         address[] users;
         uint256 vaultId;
-        uint256 totalStakedAmount;
+        uint256 totalVaultShares;
         uint256 magnifiedRewardPerShare;
         uint256 lastProcessedIndex;
         mapping(address user => uint256 position) positions;
-        mapping(address user => uint256 amountStaked) stakedBalances;
+        mapping(address user => uint256 amount) vaultBalances;
         mapping(address user => uint256 withdrawnRewards) withdrawnRewards;
     }
 
@@ -39,8 +39,8 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private constant MAX_FEES = 10;
     uint256 private constant MAGNITUDE = 2 ** 128;
 
-    uint256 private s_totalStakedAmount;
-    uint256 private s_totalSharesAmount;
+    uint256 private s_totalStakedShares;
+    uint256 private s_totalRewardShares;
     uint256 private s_minimumTokenBalanceForRewards;
     uint256 private s_magnifiedRayFiPerShare;
     uint256 private s_magnifiedRewardPerShare;
@@ -307,12 +307,12 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of tokens to unstake
      */
     function unstake(address vault, uint256 value) external {
-        uint256 stakedBalanceBefore = s_vaults[vault].stakedBalances[msg.sender];
+        uint256 stakedBalanceBefore = s_vaults[vault].vaultBalances[msg.sender];
         uint256 stakedBalanceAfter = stakedBalanceBefore - value;
         uint256 minimumTokenBalanceForRewards = s_minimumTokenBalanceForRewards;
         if (stakedBalanceBefore < value) {
             revert RayFi__InsufficientStakedBalance(stakedBalanceBefore, value);
-        } else if (stakedBalanceAfter < minimumTokenBalanceForRewards) {
+        } else if (stakedBalanceAfter != 0 && stakedBalanceAfter < minimumTokenBalanceForRewards) {
             revert RayFi__InsufficientTokensToStake(stakedBalanceAfter, minimumTokenBalanceForRewards);
         }
 
@@ -347,13 +347,13 @@ contract RayFiToken is ERC20, Ownable {
             revert RayFi__NothingToDistribute();
         }
 
-        uint256 totalSharesAmount = s_totalSharesAmount;
+        uint256 totalSharesAmount = s_totalRewardShares;
         if (totalSharesAmount <= 0) {
             revert RayFi__ZeroShareholders();
         }
 
         uint256 magnifiedRewardPerShare;
-        uint256 totalStakedAmount = s_totalStakedAmount;
+        uint256 totalStakedAmount = s_totalStakedShares;
         address rewardToken = s_rewardToken;
         if (totalStakedAmount >= 1) {
             if (vaultTokens.length <= 0) {
@@ -370,7 +370,7 @@ contract RayFiToken is ERC20, Ownable {
                 address vaultToken = vaultTokens[i];
                 Vault storage vault = s_vaults[vaultToken];
 
-                uint256 totalStakedAmountInVault = vault.totalStakedAmount;
+                uint256 totalStakedAmountInVault = vault.totalVaultShares;
                 if (totalStakedAmountInVault <= 0) {
                     continue;
                 }
@@ -494,7 +494,7 @@ contract RayFiToken is ERC20, Ownable {
         s_isExcludedFromRewards[user] = isExcluded;
         if (s_shareholders.contains(user)) {
             s_shareholders.remove(user);
-            s_totalSharesAmount -= balanceOf(user);
+            s_totalRewardShares -= balanceOf(user);
         }
         emit IsUserExcludedFromRewardsUpdated(user, isExcluded);
     }
@@ -596,7 +596,7 @@ contract RayFiToken is ERC20, Ownable {
      * @return The total staked tokens amount
      */
     function getTotalStakedAmount() external view returns (uint256) {
-        return s_totalStakedAmount;
+        return s_totalStakedShares;
     }
 
     /**
@@ -699,19 +699,18 @@ contract RayFiToken is ERC20, Ownable {
      * @param shareholder The address of the shareholder
      */
     function _updateShareholder(address shareholder) private {
-        uint256 balance = balanceOf(shareholder);
-        uint256 totalBalance = balance + s_stakedBalances[shareholder];
-        if (totalBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
+        uint256 newBalance = balanceOf(shareholder);
+        if (newBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
             (bool success, uint256 oldBalance) = s_shareholders.tryGet(shareholder);
             if (!success) {
-                s_totalSharesAmount += totalBalance;
+                s_totalRewardShares += newBalance;
             } else {
-                s_totalSharesAmount = s_totalSharesAmount + totalBalance - oldBalance;
+                s_totalRewardShares += newBalance - oldBalance;
             }
-            s_shareholders.set(shareholder, balance);
+            s_shareholders.set(shareholder, newBalance);
         } else {
             s_shareholders.remove(shareholder);
-            s_totalSharesAmount -= totalBalance;
+            s_totalRewardShares -= newBalance;
         }
     }
 
@@ -728,12 +727,12 @@ contract RayFiToken is ERC20, Ownable {
             s_vaults[vaultToken].users.push(user);
         }
 
-        s_vaults[vaultToken].stakedBalances[user] += value;
-        s_vaults[vaultToken].totalStakedAmount += value;
+        s_vaults[vaultToken].vaultBalances[user] += value;
+        s_vaults[vaultToken].totalVaultShares += value;
         s_stakedBalances[user] += value;
-        s_totalStakedAmount += value;
+        s_totalStakedShares += value;
 
-        emit RayFiStaked(user, value, s_totalStakedAmount);
+        emit RayFiStaked(user, value, s_totalStakedShares);
     }
 
     /**
@@ -742,12 +741,12 @@ contract RayFiToken is ERC20, Ownable {
      * @param value The amount of RayFi tokens to unstake
      */
     function _unstake(address vaultToken, address user, uint256 value) private {
-        s_vaults[vaultToken].stakedBalances[user] -= value;
-        s_vaults[vaultToken].totalStakedAmount -= value;
+        s_vaults[vaultToken].vaultBalances[user] -= value;
+        s_vaults[vaultToken].totalVaultShares -= value;
         s_stakedBalances[user] -= value;
-        s_totalStakedAmount -= value;
+        s_totalStakedShares -= value;
 
-        if (s_vaults[vaultToken].stakedBalances[user] <= 0) {
+        if (s_vaults[vaultToken].vaultBalances[user] <= 0) {
             Vault storage vault = s_vaults[vaultToken];
             uint256 userIndex = vault.positions[user] - 1;
             uint256 lastIndex = vault.users.length - 1;
@@ -760,7 +759,7 @@ contract RayFiToken is ERC20, Ownable {
             delete vault.positions[user];
         }
 
-        emit RayFiUnstaked(user, value, s_totalStakedAmount);
+        emit RayFiUnstaked(user, value, s_totalStakedShares);
     }
 
     /**
@@ -844,9 +843,9 @@ contract RayFiToken is ERC20, Ownable {
 
             if (vaultToken == address(this)) {
                 super._update(s_swapReceiver, address(this), withdrawnRewards);
-                s_totalStakedAmount += withdrawnRewards;
+                s_totalStakedShares += withdrawnRewards;
             } else {
-                s_vaults[vaultToken].totalStakedAmount += withdrawnRewards;
+                s_vaults[vaultToken].totalVaultShares += withdrawnRewards;
             }
 
             emit RewardsDistributed(0, withdrawnRewards);
@@ -916,7 +915,7 @@ contract RayFiToken is ERC20, Ownable {
         private
         returns (uint256 withdrawableReward)
     {
-        withdrawableReward = _calculateReward(magnifiedVaultTokensPerShare, s_vaults[vaultToken].stakedBalances[user]);
+        withdrawableReward = _calculateReward(magnifiedVaultTokensPerShare, s_vaults[vaultToken].vaultBalances[user]);
         if (withdrawableReward >= 1) {
             if (vaultToken != address(this)) {
                 ERC20(vaultToken).transfer(user, withdrawableReward);
