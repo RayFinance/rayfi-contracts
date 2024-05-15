@@ -21,4 +21,7 @@ contract DeployRayFiToken is Script {
         vm.stopBroadcast();
         return (rayFiToken, ERC20Mock(dividendTokenAddress), IUniswapV2Router02(routerAddress));
     }
+
+    // Excludes contract from coverage report
+    function test() public {}
 }

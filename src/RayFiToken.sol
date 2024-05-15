@@ -42,7 +42,6 @@ contract RayFiToken is ERC20, Ownable {
     uint256 private s_totalStakedShares;
     uint256 private s_totalRewardShares;
     uint256 private s_minimumTokenBalanceForRewards;
-    uint256 private s_magnifiedRayFiPerShare;
     uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
 
@@ -60,7 +59,6 @@ contract RayFiToken is ERC20, Ownable {
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
     mapping(address user => uint256 withdrawnRewards) private s_withdrawnRewards;
-    mapping(address user => uint256 reinvestedRayFi) private s_reinvestedRayFi;
     mapping(address token => Vault vault) private s_vaults;
 
     address[] private s_vaultTokens;
@@ -368,21 +366,16 @@ contract RayFiToken is ERC20, Ownable {
             }
         } else {
             uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
+            if (isStateful) {
+                uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
+                if (lastMagnifiedRewardPerShare >= 1) {
+                    magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
+                } else {
+                    s_magnifiedRewardPerShare = magnifiedRewardPerShare;
+                }
+            }
             _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, isStateful);
         }
-
-        // if (isStateful) {
-        //     uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
-        //     uint256 lastMagnifiedRayFiPerShare = s_magnifiedRayFiPerShare;
-        //     if (lastMagnifiedRewardPerShare >= 1 || lastMagnifiedRayFiPerShare >= 1) {
-        //         // Distribute the undistributed rewards from the last cycle
-        //         magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
-        //         magnifiedRayFiPerShare = lastMagnifiedRayFiPerShare;
-        //     } else {
-        //         s_magnifiedRewardPerShare = magnifiedRayFiPerShare;
-        //         s_magnifiedRayFiPerShare = magnifiedRewardPerShare;
-        //     }
-        // }
     }
 
     /**
@@ -825,7 +818,7 @@ contract RayFiToken is ERC20, Ownable {
     ) private {
         uint256 shareholderCount = s_shareholders.length();
         if (isStateful) {
-            _runRewardLoopStateFul(gasForRewards, shareholderCount, magnifiedRewardPerShare, 0);
+            _runRewardLoopStateFul(gasForRewards, rewardToken, shareholderCount, magnifiedRewardPerShare);
         } else {
             uint256 withdrawnRewards;
             for (uint256 i; i < shareholderCount; ++i) {
@@ -853,7 +846,7 @@ contract RayFiToken is ERC20, Ownable {
         address[] memory vaultUsers = s_vaults[vaultToken].users;
         uint256 userCount = vaultUsers.length;
         if (isStateful) {
-            _runRewardLoopStateFul(gasForRewards, userCount, magnifiedVaultTokensPerShare, 0);
+            // _runRewardLoopStateFul(gasForRewards, userCount, magnifiedVaultTokensPerShare, 0);
         } else {
             uint256 withdrawnRewards;
             for (uint256 i; i < userCount; ++i) {
@@ -875,15 +868,15 @@ contract RayFiToken is ERC20, Ownable {
     /**
      * @dev Low-level function to run the reward distribution loop in a stateful manner
      * @param gasForRewards The amount of gas to use for processing rewards
+     * @param rewardToken The address of the reward token
      * @param shareholderCount The total number of shareholders
      * @param magnifiedRewardPerShare The magnified reward amount per share
-     * @param magnifiedRayFiPerShare The magnified RayFi amount per share
      */
     function _runRewardLoopStateFul(
         uint32 gasForRewards,
+        address rewardToken,
         uint256 shareholderCount,
-        uint256 magnifiedRewardPerShare,
-        uint256 magnifiedRayFiPerShare
+        uint256 magnifiedRewardPerShare
     ) private {
         uint256 startingGas = gasleft();
         if (gasForRewards >= startingGas) {
@@ -892,22 +885,22 @@ contract RayFiToken is ERC20, Ownable {
 
         uint256 lastProcessedIndex = s_lastProcessedIndex;
         uint256 gasUsed;
+        uint256 withdrawnRewards;
         while (gasUsed < gasForRewards) {
             (address user,) = s_shareholders.at(lastProcessedIndex);
-            _processRewardOfUserStateFul(user, magnifiedRewardPerShare, magnifiedRayFiPerShare);
+            withdrawnRewards += _processRewardOfUserStateFul(user, magnifiedRewardPerShare, rewardToken);
 
             ++lastProcessedIndex;
             if (lastProcessedIndex >= shareholderCount) {
                 delete lastProcessedIndex;
-                delete s_magnifiedRewardPerShare;
-                delete s_magnifiedRayFiPerShare;
-
                 break;
             }
 
             gasUsed += startingGas - gasleft();
         }
         s_lastProcessedIndex = lastProcessedIndex;
+
+        emit RewardsDistributed(withdrawnRewards, 0);
     }
 
     /**
@@ -951,34 +944,23 @@ contract RayFiToken is ERC20, Ownable {
      * @notice Processes rewards for a specific token holder, saving the state of the distribution to storage
      * @param user The address of the token holder
      * @param magnifiedRewardPerShare The magnified reward amount per share
-     * @param magnifiedRayFiPerShare The magnified RayFi amount per share
+     * @param rewardToken The magnified RayFi amount per share
      */
-    function _processRewardOfUserStateFul(address user, uint256 magnifiedRewardPerShare, uint256 magnifiedRayFiPerShare)
+    function _processRewardOfUserStateFul(address user, uint256 magnifiedRewardPerShare, address rewardToken)
         private
+        returns (uint256 withdrawableReward)
     {
-        uint256 withdrawableReward =
-            _calculateReward(magnifiedRewardPerShare, balanceOf(user)) - s_withdrawnRewards[user];
-        uint256 reinvestableRayFi =
-            _calculateReward(magnifiedRayFiPerShare, s_stakedBalances[user]) - s_reinvestedRayFi[user];
+        withdrawableReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user)) - s_withdrawnRewards[user];
 
         if (withdrawableReward >= 1) {
             s_withdrawnRewards[user] += withdrawableReward;
 
-            (bool success) = ERC20(s_rewardToken).transfer(user, withdrawableReward);
+            (bool success) = ERC20(rewardToken).transfer(user, withdrawableReward);
 
             if (!success) {
                 s_withdrawnRewards[user] -= withdrawableReward;
-            } else {
-                emit RewardsWithdrawn(user, withdrawableReward);
+                delete withdrawableReward;
             }
-        }
-        if (reinvestableRayFi >= 1) {
-            s_reinvestedRayFi[user] += reinvestableRayFi;
-
-            super._update(s_swapReceiver, address(this), reinvestableRayFi);
-            // _stake(user, reinvestableRayFi);
-
-            emit RewardsReinvested(user, reinvestableRayFi);
         }
     }
 

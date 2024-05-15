@@ -71,4 +71,7 @@ contract HelperConfig is Script {
         NetworkConfig memory anvilConfig = NetworkConfig({dividendToken: dividendToken, router: ROUTER});
         return anvilConfig;
     }
+
+    // Excludes contract from coverage report
+    function test() public {}
 }
