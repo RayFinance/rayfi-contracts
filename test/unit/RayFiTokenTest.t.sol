@@ -24,6 +24,7 @@ contract RayFiTokenTest is Test {
     uint256 public constant TRANSFER_AMOUNT = 10_000 * (10 ** DECIMALS);
     uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS = 1_000 * (10 ** DECIMALS);
     uint256 public constant GAS_FOR_DIVIDENDS = 1_000_000;
+    uint16 public constant USER_COUNT = 100;
     uint8 public constant ACCEPTED_PRECISION_LOSS = 1;
     uint8 public constant BUY_FEE = 4;
     uint8 public constant SELL_FEE = 4;
@@ -34,11 +35,6 @@ contract RayFiTokenTest is Test {
     address FEE_RECEIVER = makeAddr("feeReceiver");
     address DIVIDEND_RECEIVER = makeAddr("rewardReceiver");
     address DUMMY_ADDRESS = makeAddr("dummy");
-
-    address ALICE = makeAddr("alice");
-    address BOB = makeAddr("bob");
-    address CHARLIE = makeAddr("charlie");
-    address DANIEL = makeAddr("daniel");
 
     function setUp() external {
         DeployRayFiToken deployRayFiToken = new DeployRayFiToken();
@@ -349,16 +345,18 @@ contract RayFiTokenTest is Test {
         vm.startPrank(msg.sender);
         rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
         uint256 balance = rayFiToken.balanceOf(msg.sender);
-        address[4] memory users = [ALICE, BOB, CHARLIE, DANIEL];
-        for (uint256 i; i < 4; ++i) {
-            rayFiToken.transfer(users[i], balance / 5);
+        address[USER_COUNT] memory users;
+        for (uint256 i; i < USER_COUNT; ++i) {
+            address user = makeAddr(string(abi.encode("user", i)));
+            users[i] = user;
+            rayFiToken.transfer(users[i], balance / (USER_COUNT + 1));
         }
         rayFiToken.distributeRewards(0, false, 0, new address[](0));
         vm.stopPrank();
-        for (uint256 i; i < 4; ++i) {
-            assert(rewardToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / 5 - ACCEPTED_PRECISION_LOSS);
+        for (uint256 i; i < USER_COUNT; ++i) {
+            assert(rewardToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS);
         }
-        assert(rewardToken.balanceOf(msg.sender) >= TRANSFER_AMOUNT / 5 - ACCEPTED_PRECISION_LOSS);
+        assert(rewardToken.balanceOf(msg.sender) >= TRANSFER_AMOUNT / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS);
     }
 
     function testStatelessDistributionEmitsEvents() public {
@@ -379,21 +377,23 @@ contract RayFiTokenTest is Test {
         vm.startPrank(msg.sender);
         rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
         uint256 balance = rayFiToken.balanceOf(msg.sender);
-        address[4] memory users = [ALICE, BOB, CHARLIE, DANIEL];
-        for (uint256 i; i < 4; ++i) {
-            rayFiToken.transfer(users[i], balance / 5);
+        address[USER_COUNT] memory users;
+        for (uint256 i; i < USER_COUNT; ++i) {
+            address user = makeAddr(string(abi.encode("user", i)));
+            users[i] = user;
+            rayFiToken.transfer(users[i], balance / (USER_COUNT + 1));
         }
         rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(msg.sender));
         vm.stopPrank();
 
-        for (uint256 i; i < 4; ++i) {
+        for (uint256 i; i < USER_COUNT; ++i) {
             vm.startPrank(users[i]);
             rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(users[i]));
             vm.stopPrank();
         }
 
-        uint256[4] memory stakedBalancesBefore;
-        for (uint256 i; i < 4; ++i) {
+        uint256[USER_COUNT] memory stakedBalancesBefore;
+        for (uint256 i; i < USER_COUNT; ++i) {
             stakedBalancesBefore[i] = rayFiToken.getStakedBalanceOf(users[i]);
         }
         uint256 stakedBalanceBeforeOwner = rayFiToken.getStakedBalanceOf(msg.sender);
@@ -402,15 +402,15 @@ contract RayFiTokenTest is Test {
         rayFiToken.distributeRewards(0, false, 0, new address[](0));
 
         uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_DIVIDEND_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
-        for (uint256 i; i < 4; ++i) {
+        for (uint256 i; i < USER_COUNT; ++i) {
             assert(
                 rayFiToken.getStakedBalanceOf(users[i])
-                    >= stakedBalancesBefore[i] + amountOut / 5 - ACCEPTED_PRECISION_LOSS
+                    >= stakedBalancesBefore[i] + amountOut / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS
             );
         }
         assert(
             rayFiToken.getStakedBalanceOf(msg.sender)
-                >= stakedBalanceBeforeOwner + amountOut / 5 - ACCEPTED_PRECISION_LOSS
+                >= stakedBalanceBeforeOwner + amountOut / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS
         );
     }
 
@@ -443,21 +443,23 @@ contract RayFiTokenTest is Test {
         vm.startPrank(msg.sender);
         rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
         uint256 balance = rayFiToken.balanceOf(msg.sender);
-        address[4] memory users = [ALICE, BOB, CHARLIE, DANIEL];
-        for (uint256 i; i < 4; ++i) {
-            rayFiToken.transfer(users[i], balance / 5);
+        address[USER_COUNT] memory users;
+        for (uint256 i; i < USER_COUNT; ++i) {
+            address user = makeAddr(string(abi.encode("user", i)));
+            users[i] = user;
+            rayFiToken.transfer(users[i], balance / (USER_COUNT + 1));
         }
         rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(msg.sender));
         vm.stopPrank();
 
-        for (uint256 i; i < 4; ++i) {
+        for (uint256 i; i < USER_COUNT; ++i) {
             vm.startPrank(users[i]);
             rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(users[i]) / 2);
             vm.stopPrank();
         }
 
-        uint256[4] memory stakedBalancesBefore;
-        for (uint256 i; i < 4; ++i) {
+        uint256[USER_COUNT] memory stakedBalancesBefore;
+        for (uint256 i; i < USER_COUNT; ++i) {
             stakedBalancesBefore[i] = rayFiToken.getStakedBalanceOf(users[i]);
         }
         uint256 stakedBalanceBeforeOwner = rayFiToken.getStakedBalanceOf(msg.sender);
@@ -466,18 +468,20 @@ contract RayFiTokenTest is Test {
         rayFiToken.distributeRewards(0, false, 0, new address[](0));
 
         uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_DIVIDEND_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
-        for (uint256 i; i < 4; ++i) {
+        for (uint256 i; i < USER_COUNT; ++i) {
             assert(
                 rayFiToken.getStakedBalanceOf(users[i])
-                    >= stakedBalancesBefore[i] + amountOut / 10 - ACCEPTED_PRECISION_LOSS
+                    >= stakedBalancesBefore[i] + amountOut / ((USER_COUNT + 1) * 2) - ACCEPTED_PRECISION_LOSS
             );
         }
-        for (uint256 i; i < 4; ++i) {
-            assert(rewardToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / 10 - ACCEPTED_PRECISION_LOSS);
+        for (uint256 i; i < USER_COUNT; ++i) {
+            assert(
+                rewardToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / ((USER_COUNT + 1) * 2) - ACCEPTED_PRECISION_LOSS
+            );
         }
         assert(
             rayFiToken.getStakedBalanceOf(msg.sender)
-                >= stakedBalanceBeforeOwner + amountOut / 5 - ACCEPTED_PRECISION_LOSS
+                >= stakedBalanceBeforeOwner + amountOut / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS
         );
     }
 
