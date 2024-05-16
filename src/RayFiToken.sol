@@ -518,17 +518,10 @@ contract RayFiToken is ERC20, Ownable {
      */
     function setIsExcludedFromRewards(address user, bool isExcluded) external onlyOwner {
         s_isExcludedFromRewards[user] = isExcluded;
-        if (s_shareholders.contains(user)) {
-            s_totalRewardShares -= s_shareholders.get(user);
-            s_shareholders.remove(user);
-            uint256 stakedBalance = s_stakedBalances[user];
-            if (stakedBalance >= 1) {
-                for (uint256 i; i < s_vaultTokens.length; ++i) {
-                    address vaultToken = s_vaultTokens[i];
-                    _unstake(vaultToken, user, s_vaults[vaultToken].vaultBalances[user]);
-                }
-                super._update(address(this), user, stakedBalance);
-            }
+        if (isExcluded) {
+            _removeShareholder(user);
+        } else {
+            _updateShareholder(user);
         }
         emit IsUserExcludedFromRewardsUpdated(user, isExcluded);
     }
@@ -751,7 +744,17 @@ contract RayFiToken is ERC20, Ownable {
                 s_totalRewardShares = s_totalRewardShares + totalBalance - oldBalance;
             }
             s_shareholders.set(shareholder, newBalance);
-        } else if (s_shareholders.contains(shareholder)) {
+        } else {
+            _removeShareholder(shareholder);
+        }
+    }
+
+    /**
+     * @dev Removes a shareholder from the list and retrieves their staked tokens
+     * @param shareholder The address of the shareholder
+     */
+    function _removeShareholder(address shareholder) private {
+        if (s_shareholders.contains(shareholder)) {
             s_totalRewardShares -= s_shareholders.get(shareholder);
             s_shareholders.remove(shareholder);
             uint256 stakedBalance = s_stakedBalances[shareholder];
