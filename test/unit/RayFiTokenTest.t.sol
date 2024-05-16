@@ -359,13 +359,14 @@ contract RayFiTokenTest is Test {
 
     function testUsersCanUnstake() public minimumBalanceForRewardsSet {
         uint256 balanceBefore = rayFiToken.balanceOf(msg.sender);
-        vm.prank(msg.sender);
+        vm.startPrank(msg.sender);
         rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
         rayFiToken.stake(address(rayFiToken), TRANSFER_AMOUNT);
-        vm.startPrank(msg.sender);
+        vm.stopPrank();
         rayFiToken.stake(address(rayFiToken), TRANSFER_AMOUNT);
 
         vm.recordLogs();
+        vm.startPrank(msg.sender);
         rayFiToken.unstake(address(rayFiToken), TRANSFER_AMOUNT);
         vm.stopPrank();
 
@@ -396,8 +397,14 @@ contract RayFiTokenTest is Test {
     }
 
     function testUnstakingRevertsOnInsufficientStakedBalance() public minimumBalanceForRewardsSet {
+        vm.prank(msg.sender);
+        rayFiToken.transfer(address(this), TRANSFER_AMOUNT / 2);
+        rayFiToken.stake(address(rayFiToken), TRANSFER_AMOUNT / 2);
+
         vm.expectRevert(
-            abi.encodeWithSelector(RayFiToken.RayFi__InsufficientStakedBalance.selector, 0, TRANSFER_AMOUNT)
+            abi.encodeWithSelector(
+                RayFiToken.RayFi__InsufficientStakedBalance.selector, TRANSFER_AMOUNT / 2, TRANSFER_AMOUNT
+            )
         );
         rayFiToken.unstake(address(rayFiToken), TRANSFER_AMOUNT);
     }
@@ -748,7 +755,7 @@ contract RayFiTokenTest is Test {
         rayFiToken.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS / 2}(GAS_FOR_DIVIDENDS, 0, new address[](0));
 
         rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(msg.sender));
-        
+
         vm.expectRevert();
         rayFiToken.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS / 2}(GAS_FOR_DIVIDENDS, 0, new address[](0));
         vm.stopPrank();
