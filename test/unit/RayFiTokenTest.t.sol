@@ -360,20 +360,39 @@ contract RayFiTokenTest is Test {
     function testUsersCanUnstake() public minimumBalanceForRewardsSet {
         uint256 balanceBefore = rayFiToken.balanceOf(msg.sender);
         vm.prank(msg.sender);
+        rayFiToken.transfer(address(this), TRANSFER_AMOUNT);
         rayFiToken.stake(address(rayFiToken), TRANSFER_AMOUNT);
-        vm.prank(msg.sender);
+        vm.startPrank(msg.sender);
+        rayFiToken.stake(address(rayFiToken), TRANSFER_AMOUNT);
+
         vm.recordLogs();
         rayFiToken.unstake(address(rayFiToken), TRANSFER_AMOUNT);
+        vm.stopPrank();
+
         Vm.Log[] memory entries = vm.getRecordedLogs();
         assertEq(entries[0].topics[0], keccak256("RayFiUnstaked(address,uint256,uint256)"));
         assertEq(entries[0].topics[1], bytes32(uint256(uint160(msg.sender))));
         assertEq(entries[0].topics[2], bytes32(TRANSFER_AMOUNT));
-        assertEq(entries[0].topics[3], bytes32(rayFiToken.getTotalStakedAmount()));
+        assertEq(entries[0].topics[3], bytes32(TRANSFER_AMOUNT));
         assertEq(rayFiToken.getStakedBalanceOf(msg.sender), 0);
-        assertEq(rayFiToken.balanceOf(msg.sender), balanceBefore);
+        assertEq(rayFiToken.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
+        assertEq(rayFiToken.balanceOf(address(rayFiToken)), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.getTotalStakedAmount(), TRANSFER_AMOUNT);
+        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
+
+        vm.recordLogs();
+        rayFiToken.unstake(address(rayFiToken), TRANSFER_AMOUNT);
+
+        entries = vm.getRecordedLogs();
+        assertEq(entries[0].topics[0], keccak256("RayFiUnstaked(address,uint256,uint256)"));
+        assertEq(entries[0].topics[1], bytes32(uint256(uint160(address(this)))));
+        assertEq(entries[0].topics[2], bytes32(TRANSFER_AMOUNT));
+        assertEq(entries[0].topics[3], bytes32(0));
+        assertEq(rayFiToken.getStakedBalanceOf(address(this)), 0);
+        assertEq(rayFiToken.balanceOf(address(this)), TRANSFER_AMOUNT);
         assertEq(rayFiToken.balanceOf(address(rayFiToken)), 0);
         assertEq(rayFiToken.getTotalStakedAmount(), 0);
-        assertEq(rayFiToken.getSharesBalanceOf(msg.sender), balanceBefore);
+        assertEq(rayFiToken.getSharesBalanceOf(address(this)), TRANSFER_AMOUNT);
     }
 
     function testUnstakingRevertsOnInsufficientStakedBalance() public minimumBalanceForRewardsSet {
@@ -696,6 +715,19 @@ contract RayFiTokenTest is Test {
         assert(rayFiToken.getStakedBalanceOf(msg.sender) >= TRANSFER_AMOUNT + amountOut - ACCEPTED_PRECISION_LOSS);
     }
 
+    function testReinvetmentWithNonZeroSlippageWorks() public liquidityAdded minimumBalanceForRewardsSet {
+        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(msg.sender));
+
+        rayFiToken.distributeRewardsStateless(5, new address[](0));
+        vm.stopPrank();
+
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_DIVIDEND_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        assert(rayFiToken.getStakedBalanceOf(msg.sender) >= TRANSFER_AMOUNT + amountOut - ACCEPTED_PRECISION_LOSS);
+    }
+
     function testDistributionRevertsOnZeroRewardBalance() public {
         vm.startPrank(msg.sender);
         vm.expectRevert(RayFiToken.RayFi__NothingToDistribute.selector);
@@ -707,14 +739,36 @@ contract RayFiTokenTest is Test {
         rayFiToken.distributeRewardsStateless(0, new address[](0));
     }
 
-    // function testStatefulDistributionRevertsOnInsufficientGas() public {
-    //     rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
-    //     vm.startPrank(msg.sender);
-    //     rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
-    //     vm.expectRevert();
-    //     rayFiToken.distributeRewards{gas: GAS_FOR_DIVIDENDS / 2}(GAS_FOR_DIVIDENDS, false);
-    //     vm.stopPrank();
-    // }
+    function testStatefulDistributionRevertsOnInsufficientGas() public {
+        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+
+        vm.expectRevert();
+        rayFiToken.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS / 2}(GAS_FOR_DIVIDENDS, 0, new address[](0));
+
+        rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(msg.sender));
+        
+        vm.expectRevert();
+        rayFiToken.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS / 2}(GAS_FOR_DIVIDENDS, 0, new address[](0));
+        vm.stopPrank();
+    }
+
+    function testEmptyVaultsDoNotBreakDistribution() public liquidityAdded {
+        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        rayFiToken.stake(address(rayFiToken), rayFiToken.balanceOf(msg.sender));
+
+        address[] memory vaults = new address[](2);
+        vaults[0] = address(0);
+        vaults[1] = address(rayFiToken);
+        rayFiToken.distributeRewardsStateless(0, vaults);
+        vm.stopPrank();
+
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_DIVIDEND_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        assert(rayFiToken.getStakedBalanceOf(msg.sender) >= TRANSFER_AMOUNT + amountOut - ACCEPTED_PRECISION_LOSS);
+    }
 
     ////////////////////
     // Setter Tests ////
