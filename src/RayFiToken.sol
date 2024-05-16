@@ -1092,12 +1092,7 @@ contract RayFiToken is ERC20, Ownable {
         if (earnedReward >= 1) {
             s_withdrawnRewards[user] += earnedReward;
 
-            (bool success) = ERC20(rewardToken).transfer(user, earnedReward);
-
-            if (!success) {
-                s_withdrawnRewards[user] -= earnedReward;
-                earnedReward = 0;
-            }
+            ERC20(rewardToken).transfer(user, earnedReward);
         }
     }
 
@@ -1122,12 +1117,7 @@ contract RayFiToken is ERC20, Ownable {
             vault.withdrawnRewards[user] += vaultReward;
 
             if (vaultToken != address(this)) {
-                (bool success) = ERC20(vaultToken).transfer(user, vaultReward);
-
-                if (!success) {
-                    vault.withdrawnRewards[user] -= vaultReward;
-                    vaultReward = 0;
-                }
+                ERC20(vaultToken).transfer(user, vaultReward);
             } else {
                 unchecked {
                     vault.vaultBalances[user] += vaultReward;
