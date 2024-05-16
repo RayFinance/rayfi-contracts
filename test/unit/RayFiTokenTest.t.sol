@@ -634,6 +634,25 @@ contract RayFiTokenTest is Test {
         );
     }
 
+    function testStatelessDistributionRevertsIfStatefulDistributionIsInProgress() public {
+        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rewardToken.transfer(address(rayFiToken), TRANSFER_AMOUNT);
+        uint256 balance = rayFiToken.balanceOf(msg.sender);
+        address[USER_COUNT] memory users;
+        for (uint256 i; i < USER_COUNT; ++i) {
+            address user = makeAddr(string(abi.encode("user", i)));
+            users[i] = user;
+            rayFiToken.transfer(users[i], balance / (USER_COUNT + 1));
+        }
+
+        rayFiToken.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS * 2}(GAS_FOR_DIVIDENDS, 0, new address[](0));
+
+        vm.expectRevert(RayFiToken.RayFi__DistributionInProgress.selector);
+        rayFiToken.distributeRewardsStateless(0, new address[](0));
+        vm.stopPrank();
+    }
+
     function testDistributionRevertsOnZeroRewardBalance() public {
         vm.startPrank(msg.sender);
         vm.expectRevert(RayFiToken.RayFi__NothingToDistribute.selector);

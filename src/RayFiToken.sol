@@ -421,11 +421,11 @@ contract RayFiToken is ERC20, Ownable {
                 }
                 isComplete = _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, true);
             }
-
-            if (isComplete) {
-                s_isProcessingRewards = false;
-            }
         } else {
+            if (!s_isProcessingRewards) {
+                s_isProcessingRewards = true;
+            }
+
             uint256 magnifiedRewardPerShare;
             uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
             if (lastMagnifiedRewardPerShare >= 1) {
@@ -434,7 +434,11 @@ contract RayFiToken is ERC20, Ownable {
                 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
                 s_magnifiedRewardPerShare = magnifiedRewardPerShare;
             }
-            _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, true);
+            isComplete = _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, true);
+        }
+
+        if (isComplete) {
+            s_isProcessingRewards = false;
         }
     }
 
