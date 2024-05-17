@@ -69,3 +69,28 @@ contract CreateRayFiLiquidityPool is Script {
     // Excludes contract from coverage report
     function test() public {}
 }
+
+contract CreateRayFiUsers is Script {
+    uint256 public constant USER_COUNT = 100;
+
+    function createRayFiUsers(address rayFiAddress) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        vm.startPrank(msg.sender);
+        address[100] memory users;
+        uint256 balance = rayFi.balanceOf(msg.sender);
+        for (uint256 i = 0; i < USER_COUNT; i++) {
+            users[i] = address(uint160(uint256(keccak256(abi.encodePacked(i + 1)))));
+            rayFi.transfer(users[i], balance / (USER_COUNT + 1));
+        }
+    }
+
+    function run() external {
+        address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        vm.startBroadcast();
+        createRayFiUsers(mostRecentDeployed);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}

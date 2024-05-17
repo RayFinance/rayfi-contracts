@@ -69,3 +69,30 @@ contract InteractionsTest is Test {
 
         assert(IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken)) != address(0));
     }
+
+    function testCreateRayFiUsers() public {
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+        vm.stopPrank();
+
+        assertEq(rayFi.getShareholders().length, createRayFiUsers.USER_COUNT() + 1);
+    }
+
+    function testDistributionNoVaults() public {
+        FundRayFi fundRayFi = new FundRayFi();
+        fundRayFi.fundRayFi(address(rayFi));
+
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateless(0, new address[](0));
+        vm.stopPrank();
+
+        address[] memory users = rayFi.getShareholders();
+        for (uint256 i; i < users.length; ++i) {
+            assert(rewardToken.balanceOf(users[i]) >= FUND_AMOUNT / (users.length) - ACCEPTED_PRECISION_LOSS);
+        }
+    }
