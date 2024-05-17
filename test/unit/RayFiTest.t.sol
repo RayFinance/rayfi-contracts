@@ -243,20 +243,23 @@ uint8 public constant MAX_ATTEMPTS = 100;
     //////////////////
 
     function testSwapsWork() public liquidityAdded {
-        // 1. Test buy swap
+        // 1. Test sell swap
         address[] memory path = new address[](2);
         path[0] = address(rayFi);
         path[1] = address(rewardToken);
         uint256 amountIn = TRANSFER_AMOUNT;
-        uint256 amountOut = router.getAmountOut(amountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        uint256 amountOut = router.getAmountOut(amountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_REWARD_LIQUIDITY);
+uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
+
         vm.startPrank(msg.sender);
         rayFi.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, amountOut, path, msg.sender, block.timestamp
         );
-        assertEq(rewardToken.balanceOf(msg.sender), amountOut);
+        
+        assertEq(rewardToken.balanceOf(msg.sender), rewardBalanceBefore + amountOut);
 
-        // 2. Test sell swap
+        // 2. Test buy swap
         path[0] = address(rewardToken);
         path[1] = address(rayFi);
         amountIn = amountOut;
@@ -264,33 +267,38 @@ uint8 public constant MAX_ATTEMPTS = 100;
             IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken))
         ).getReserves();
         amountOut = router.getAmountOut(amountIn, rewardLiquidity, rayFiLiquidity);
+                uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
+
         rewardToken.approve(address(router), amountIn);
-        uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, amountOut, path, msg.sender, block.timestamp
         );
+                vm.stopPrank();
+
         assertEq(rayFi.balanceOf(msg.sender), rayFiBalanceBefore + amountOut);
-        vm.stopPrank();
     }
 
     function testSwapsTakeFees() public liquidityAdded feesSet {
-        // 1. Test buy fee
+        // 1. Test sell fee
         address[] memory path = new address[](2);
         path[0] = address(rayFi);
         path[1] = address(rewardToken);
         uint256 amountIn = TRANSFER_AMOUNT;
-        uint256 feeAmount = amountIn * BUY_FEE / 100;
+        uint256 feeAmount = amountIn * SELL_FEE / 100;
         uint256 adjustedAmountIn = amountIn - feeAmount;
-        uint256 amountOut = router.getAmountOut(adjustedAmountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_DIVIDEND_LIQUIDITY);
+        uint256 amountOut = router.getAmountOut(adjustedAmountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_REWARD_LIQUIDITY);
+uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
+
         vm.startPrank(msg.sender);
         rayFi.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, amountOut, path, msg.sender, block.timestamp
         );
-        assertEq(rewardToken.balanceOf(msg.sender), amountOut);
+        
+        assertEq(rewardToken.balanceOf(msg.sender), rewardBalanceBefore + amountOut);
         assertEq(rayFi.balanceOf(FEE_RECEIVER), feeAmount);
 
-        // 2. Test sell fee
+        // 2. Test buy fee
         path[0] = address(rewardToken);
         path[1] = address(rayFi);
         amountIn = amountOut;
@@ -298,18 +306,20 @@ uint8 public constant MAX_ATTEMPTS = 100;
             IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken))
         ).getReserves();
         amountOut = router.getAmountOut(amountIn, rewardLiquidity, rayFiLiquidity);
-        feeAmount = amountOut * SELL_FEE / 100;
+        feeAmount = amountOut * BUY_FEE / 100;
         uint256 adjustedAmountOut = amountOut - feeAmount;
-        rewardToken.approve(address(router), amountIn);
-        uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
+                uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
         uint256 feeReceiverRayFiBalanceBefore = rayFi.balanceOf(FEE_RECEIVER);
+
+        rewardToken.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, adjustedAmountOut, path, msg.sender, block.timestamp
         );
+vm.stopPrank();
+
         assertEq(rayFi.balanceOf(msg.sender), rayFiBalanceBefore + adjustedAmountOut);
         assertEq(rayFi.balanceOf(FEE_RECEIVER), feeReceiverRayFiBalanceBefore + feeAmount);
-        vm.stopPrank();
-    }
+            }
 
     /////////////////////
     // Staking Tests ////
