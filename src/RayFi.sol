@@ -8,12 +8,12 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 /**
- * @title RayFiToken
+ * @title RayFi
  * @author 0xC4LL3
  * @notice This contract is the underlying token of the Ray Finance ecosystem.
  * @notice The primary purpose of this token is acquiring (or selling) shares of the Ray Finance protocol.
  */
-contract RayFiToken is ERC20, Ownable {
+contract RayFi is ERC20, Ownable {
     //////////////
     // Types    //
     //////////////
@@ -180,7 +180,7 @@ contract RayFiToken is ERC20, Ownable {
      * @dev Sending RayFi tokens to the contract is not allowed to prevent accidental staking
      * This also simplifies reward tracking and distribution logic
      */
-    error RayFi__CannotManuallySendRayFiTokensToTheContract();
+    error RayFi__CannotManuallySendRayFisToTheContract();
 
     /**
      * @dev Triggered when attempting to set the zero address as a contract parameter
@@ -684,7 +684,7 @@ contract RayFiToken is ERC20, Ownable {
      */
     function _update(address from, address to, uint256 value) internal override {
         if (to == address(this)) {
-            revert RayFi__CannotManuallySendRayFiTokensToTheContract();
+            revert RayFi__CannotManuallySendRayFisToTheContract();
         }
 
         if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
