@@ -5,6 +5,10 @@ pragma solidity ^0.8.20;
 import {Script, console} from "forge-std/Script.sol";
 // import {StdCheats} from "forge-std/StdCheats.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
+import {MockUSDT} from "../test/mocks/MockUSDT.sol";
+import {MockBTCB} from "../test/mocks/MockBTCB.sol";
+import {MockETH} from "../test/mocks/MockETH.sol";
+import {MockBNB} from "../test/mocks/MockBNB.sol";
 
 contract HelperConfig is Script {
     address WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -16,6 +20,9 @@ contract HelperConfig is Script {
     struct NetworkConfig {
         address rewardToken;
         address router;
+        address btcb;
+        address eth;
+        address bnb;
     }
 
     error HelperConfig__ChainNotImplemented();
@@ -42,7 +49,10 @@ contract HelperConfig is Script {
         }
 
         vm.startBroadcast();
-        address rewardToken = address(new ERC20Mock());
+        address rewardToken = address(new MockUSDT());
+        address wbtc = address(new MockBTCB());
+        address weth = address(new MockETH());
+        address bnb = address(new MockBNB());
 
         vm.etch(WETH, vm.getCode("out/WETH9.sol/WETH9.json"));
         // deployCodeTo("WETH9.sol:WETH9", WETH);
@@ -68,7 +78,8 @@ contract HelperConfig is Script {
         // deployCodeTo("UniswapV2Router02.sol:UniswapV2Router02", abi.encode(FACTORY, WETH), ROUTER);
         vm.stopBroadcast();
 
-        NetworkConfig memory anvilConfig = NetworkConfig({rewardToken: rewardToken, router: ROUTER});
+        NetworkConfig memory anvilConfig =
+            NetworkConfig({rewardToken: rewardToken, router: ROUTER, btcb: wbtc, eth: weth, bnb: bnb});
         return anvilConfig;
     }
 
