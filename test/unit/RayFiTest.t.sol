@@ -25,7 +25,7 @@ contract RayFiTest is Test {
     uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_REWARDS = 1_000 ether;
     uint32 public constant GAS_FOR_REWARDS = 1_000_000;
     uint16 public constant USER_COUNT = 100;
-uint8 public constant MAX_ATTEMPTS = 100;
+    uint8 public constant MAX_ATTEMPTS = 100;
     uint8 public constant ACCEPTED_PRECISION_LOSS = 1;
     uint8 public constant BUY_FEE = 4;
     uint8 public constant SELL_FEE = 4;
@@ -249,14 +249,14 @@ uint8 public constant MAX_ATTEMPTS = 100;
         path[1] = address(rewardToken);
         uint256 amountIn = TRANSFER_AMOUNT;
         uint256 amountOut = router.getAmountOut(amountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_REWARD_LIQUIDITY);
-uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
+        uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
 
         vm.startPrank(msg.sender);
         rayFi.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, amountOut, path, msg.sender, block.timestamp
         );
-        
+
         assertEq(rewardToken.balanceOf(msg.sender), rewardBalanceBefore + amountOut);
 
         // 2. Test buy swap
@@ -267,13 +267,13 @@ uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
             IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken))
         ).getReserves();
         amountOut = router.getAmountOut(amountIn, rewardLiquidity, rayFiLiquidity);
-                uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
+        uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
 
         rewardToken.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, amountOut, path, msg.sender, block.timestamp
         );
-                vm.stopPrank();
+        vm.stopPrank();
 
         assertEq(rayFi.balanceOf(msg.sender), rayFiBalanceBefore + amountOut);
     }
@@ -287,14 +287,14 @@ uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
         uint256 feeAmount = amountIn * SELL_FEE / 100;
         uint256 adjustedAmountIn = amountIn - feeAmount;
         uint256 amountOut = router.getAmountOut(adjustedAmountIn, INITIAL_RAYFI_LIQUIDITY, INITIAL_REWARD_LIQUIDITY);
-uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
+        uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
 
         vm.startPrank(msg.sender);
         rayFi.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, amountOut, path, msg.sender, block.timestamp
         );
-        
+
         assertEq(rewardToken.balanceOf(msg.sender), rewardBalanceBefore + amountOut);
         assertEq(rayFi.balanceOf(FEE_RECEIVER), feeAmount);
 
@@ -308,18 +308,18 @@ uint256 rewardBalanceBefore = rewardToken.balanceOf(msg.sender);
         amountOut = router.getAmountOut(amountIn, rewardLiquidity, rayFiLiquidity);
         feeAmount = amountOut * BUY_FEE / 100;
         uint256 adjustedAmountOut = amountOut - feeAmount;
-                uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
+        uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
         uint256 feeReceiverRayFiBalanceBefore = rayFi.balanceOf(FEE_RECEIVER);
 
         rewardToken.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             amountIn, adjustedAmountOut, path, msg.sender, block.timestamp
         );
-vm.stopPrank();
+        vm.stopPrank();
 
         assertEq(rayFi.balanceOf(msg.sender), rayFiBalanceBefore + adjustedAmountOut);
         assertEq(rayFi.balanceOf(FEE_RECEIVER), feeReceiverRayFiBalanceBefore + feeAmount);
-            }
+    }
 
     /////////////////////
     // Staking Tests ////
@@ -327,24 +327,28 @@ vm.stopPrank();
 
     function testUsersCanStake() public minimumBalanceForRewardsSet {
         uint256 balanceBefore = rayFi.balanceOf(msg.sender);
-        vm.prank(msg.sender);
+        uint256 totalRewardSharesBefore = rayFi.getTotalRewardShares();
+
         vm.recordLogs();
+        vm.prank(msg.sender);
         rayFi.stake(address(rayFi), TRANSFER_AMOUNT);
+
         Vm.Log[] memory entries = vm.getRecordedLogs();
         assertEq(entries[1].topics[0], keccak256("RayFiStaked(address,uint256,uint256)"));
         assertEq(entries[1].topics[1], bytes32(uint256(uint160(msg.sender))));
         assertEq(entries[1].topics[2], bytes32(TRANSFER_AMOUNT));
-        assertEq(entries[1].topics[3], bytes32(rayFi.getTotalStakedAmount()));
+        assertEq(entries[1].topics[3], bytes32(TRANSFER_AMOUNT));
         assertEq(rayFi.getStakedBalanceOf(msg.sender), TRANSFER_AMOUNT);
         assertEq(rayFi.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
         assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT);
         assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT);
-        assertEq(rayFi.getSharesBalanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
+        assertEq(rayFi.getTotalRewardShares(), totalRewardSharesBefore);
+        assertEq(rayFi.getSharesBalanceOf(msg.sender), balanceBefore);
     }
 
     function testStakingRevertsOnInsufficientInput() public minimumBalanceForRewardsSet {
         vm.expectRevert(
-            abi.encodeWithSelector(RayFi.RayFi__InsufficientTokensToStake.selector, MINIMUM_TOKEN_BALANCE_FOR_DIVIDENDS)
+            abi.encodeWithSelector(RayFi.RayFi__InsufficientTokensToStake.selector, MINIMUM_TOKEN_BALANCE_FOR_REWARDS)
         );
         rayFi.stake(address(rayFi), 0);
     }
@@ -584,9 +588,10 @@ vm.stopPrank();
         vm.startPrank(msg.sender);
         rewardToken.transfer(address(rayFi), TRANSFER_AMOUNT);
 
-        // We arbitrarily run an excessive amount of distributions to ensure nothing breaks
-        for (uint256 i; i < USER_COUNT; ++i) {
-            rayFi.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS * 2}(GAS_FOR_DIVIDENDS, 0, new address[](0));
+        for (uint256 i; i < MAX_ATTEMPTS; ++i) {
+            if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0))) {
+                break;
+            }
         }
         vm.stopPrank();
 
@@ -628,14 +633,8 @@ vm.stopPrank();
         }
         uint256 stakedBalanceBeforeOwner = rayFi.getStakedBalanceOf(msg.sender);
 
-        // We arbitrarily run an excessive amount of distributions to ensure nothing breaks
-        for (uint256 i; i < USER_COUNT; ++i) {
-            try rayFi.distributeRewardsStateful{gas: GAS_FOR_DIVIDENDS * 10}(GAS_FOR_DIVIDENDS, 0, new address[](0)) {
-                continue;
-            } catch (bytes memory reason) {
-                bytes4 desiredSelector = bytes4(keccak256(bytes("RayFi__NothingToDistribute()")));
-                bytes4 receivedSelector = bytes4(reason);
-                assertEq(desiredSelector, receivedSelector);
+        for (uint256 i; i < MAX_ATTEMPTS; ++i) {
+            if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0))) {
                 break;
             }
         }
@@ -742,6 +741,8 @@ vm.stopPrank();
         vm.startPrank(msg.sender);
         vm.expectRevert(RayFi.RayFi__NothingToDistribute.selector);
         rayFi.distributeRewardsStateless(0, new address[](0));
+        vm.expectRevert(RayFi.RayFi__NothingToDistribute.selector);
+        rayFi.distributeRewardsStateful(0, 0, new address[](0));
     }
 
     function testOnlyOwnerCanStartDistribution() public {
@@ -749,7 +750,7 @@ vm.stopPrank();
         rayFi.distributeRewardsStateless(0, new address[](0));
     }
 
-    function testStatefulDistributionRevertsOnInsufficientGas() public {
+    function testStatefulDistributionRevertsOnInsufficientGas() public liquidityAdded {
         rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
         vm.startPrank(msg.sender);
         rewardToken.transfer(address(rayFi), TRANSFER_AMOUNT);
