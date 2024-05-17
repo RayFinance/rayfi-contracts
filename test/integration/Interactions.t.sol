@@ -60,3 +60,12 @@ contract InteractionsTest is Test {
 
         assertEq(rewardToken.balanceOf(address(rayFi)), FUND_AMOUNT);
     }
+
+    function testCreateRayFiLiquidityPool() public {
+        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
+        vm.startPrank(msg.sender);
+        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        vm.stopPrank();
+
+        assert(IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken)) != address(0));
+    }
