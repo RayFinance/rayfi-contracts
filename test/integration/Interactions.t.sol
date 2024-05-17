@@ -79,6 +79,31 @@ contract InteractionsTest is Test {
         assertEq(rayFi.getShareholders().length, createRayFiUsers.USER_COUNT() + 1);
     }
 
+    function testFullyStakeRayFiUsersSingleVault() public {
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+        vm.stopPrank();
+
+        FullyStakeRayFiUsersSingleVault fullyStakeRayFiUsersSingleVault = new FullyStakeRayFiUsersSingleVault();
+        fullyStakeRayFiUsersSingleVault.fullyStakeRayFiUsers(address(rayFi));
+
+        assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedAmount());
+    }
+
+    function testPartiallyStakeRayFiUsersSingleVault() public {
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+        vm.stopPrank();
+
+        PartiallyStakeRayFiUsersSingleVault partiallyStakeRayFiUsersSingleVault =
+            new PartiallyStakeRayFiUsersSingleVault();
+        partiallyStakeRayFiUsersSingleVault.partiallyStakeRayFiUsers(address(rayFi));
+
+        assertEq(rayFi.getTotalRewardShares() / 2, rayFi.getTotalStakedAmount());
+    }
+
     function testDistributionNoVaults() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
@@ -94,5 +119,79 @@ contract InteractionsTest is Test {
         address[] memory users = rayFi.getShareholders();
         for (uint256 i; i < users.length; ++i) {
             assert(rewardToken.balanceOf(users[i]) >= FUND_AMOUNT / (users.length) - ACCEPTED_PRECISION_LOSS);
+        }
+    }
+
+    function testDistributionOnlySingleVault() public {
+        FundRayFi fundRayFi = new FundRayFi();
+        fundRayFi.fundRayFi(address(rayFi));
+
+        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
+        vm.startPrank(msg.sender);
+        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+
+        FullyStakeRayFiUsersSingleVault fullyStakeRayFiUsersSingleVault = new FullyStakeRayFiUsersSingleVault();
+        fullyStakeRayFiUsersSingleVault.fullyStakeRayFiUsers(address(rayFi));
+
+        address[] memory users = rayFi.getShareholders();
+        uint256[] memory stakedBalancesBefore = new uint256[](users.length);
+        for (uint256 i; i < users.length; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateless(0, new address[](0));
+        vm.stopPrank();
+
+        uint256 amountOut = router.getAmountOut(FUND_AMOUNT, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        for (uint256 i; i < users.length; ++i) {
+            assert(
+                rayFi.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOut / users.length - ACCEPTED_PRECISION_LOSS
+            );
+        }
+    }
+
+    function testMixedDistributionSingleVault() public {
+        FundRayFi fundRayFi = new FundRayFi();
+        fundRayFi.fundRayFi(address(rayFi));
+
+        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
+        vm.startPrank(msg.sender);
+        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+
+        PartiallyStakeRayFiUsersSingleVault partiallyStakeRayFiUsersSingleVault =
+            new PartiallyStakeRayFiUsersSingleVault();
+        partiallyStakeRayFiUsersSingleVault.partiallyStakeRayFiUsers(address(rayFi));
+
+        address[] memory users = rayFi.getShareholders();
+        uint256[] memory stakedBalancesBefore = new uint256[](users.length);
+        for (uint256 i; i < users.length; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateless(0, new address[](0));
+        vm.stopPrank();
+
+        uint256 amountOut = router.getAmountOut(FUND_AMOUNT, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        for (uint256 i; i < users.length; ++i) {
+            assert(
+                rayFi.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOut / (users.length * 2) - ACCEPTED_PRECISION_LOSS
+            );
+        }
+        for (uint256 i; i < users.length; ++i) {
+            assert(rewardToken.balanceOf(users[i]) >= FUND_AMOUNT / (users.length * 2) - ACCEPTED_PRECISION_LOSS);
+        }
+    }
         }
     }

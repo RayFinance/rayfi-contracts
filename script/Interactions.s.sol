@@ -94,3 +94,47 @@ contract CreateRayFiUsers is Script {
     // Excludes contract from coverage report
     function test() public {}
 }
+
+contract FullyStakeRayFiUsersSingleVault is Script {
+    function fullyStakeRayFiUsers(address rayFiAddress) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        address[] memory users = rayFi.getShareholders();
+        for (uint256 i; i < users.length; i++) {
+            vm.startPrank(users[i]);
+            rayFi.stake(rayFiAddress, rayFi.balanceOf(users[i]));
+            vm.stopPrank();
+        }
+    }
+
+    function run() external {
+        address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        vm.startBroadcast();
+        fullyStakeRayFiUsers(mostRecentDeployed);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}
+
+contract PartiallyStakeRayFiUsersSingleVault is Script {
+    function partiallyStakeRayFiUsers(address rayFiAddress) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        address[] memory users = rayFi.getShareholders();
+        for (uint256 i; i < users.length; i++) {
+            vm.startPrank(users[i]);
+            rayFi.stake(rayFiAddress, rayFi.balanceOf(users[i]) / 2);
+            vm.stopPrank();
+        }
+    }
+
+    function run() external {
+        address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        vm.startBroadcast();
+        partiallyStakeRayFiUsers(mostRecentDeployed);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}
