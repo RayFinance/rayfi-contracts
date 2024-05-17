@@ -14,7 +14,7 @@ contract HelperConfig is Script {
     NetworkConfig public activeNetworkConfig;
 
     struct NetworkConfig {
-        address dividendToken;
+        address rewardToken;
         address router;
     }
 
@@ -37,12 +37,12 @@ contract HelperConfig is Script {
     }
 
     function getOrCreateAnvilEthConfig() public returns (NetworkConfig memory) {
-        if (activeNetworkConfig.dividendToken != address(0)) {
+        if (activeNetworkConfig.rewardToken != address(0)) {
             return activeNetworkConfig;
         }
 
         vm.startBroadcast();
-        address dividendToken = address(new ERC20Mock());
+        address rewardToken = address(new ERC20Mock());
 
         vm.etch(WETH, vm.getCode("out/WETH9.sol/WETH9.json"));
         // deployCodeTo("WETH9.sol:WETH9", WETH);
@@ -68,7 +68,7 @@ contract HelperConfig is Script {
         // deployCodeTo("UniswapV2Router02.sol:UniswapV2Router02", abi.encode(FACTORY, WETH), ROUTER);
         vm.stopBroadcast();
 
-        NetworkConfig memory anvilConfig = NetworkConfig({dividendToken: dividendToken, router: ROUTER});
+        NetworkConfig memory anvilConfig = NetworkConfig({rewardToken: rewardToken, router: ROUTER});
         return anvilConfig;
     }
 
