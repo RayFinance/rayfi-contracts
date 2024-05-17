@@ -56,9 +56,6 @@ contract RayFi is ERC20, Ownable {
     uint256 private s_lastProcessedIndex;
     uint256 private s_minimumTokenBalanceForRewards;
 
-    bool private s_isProcessingRewards;
-    bool private s_isProcessingVaults;
-
     IUniswapV2Router02 private s_router;
 
     address private s_rewardToken;
@@ -195,7 +192,7 @@ contract RayFi is ERC20, Ownable {
      * @dev Sending RayFi tokens to the contract is not allowed to prevent accidental staking
      * This also simplifies reward tracking and distribution logic
      */
-    error RayFi__CannotManuallySendRayFisToTheContract();
+    error RayFi__CannotManuallySendRayFiToTheContract();
 
     /**
      * @dev Triggered when attempting to set the zero address as a contract parameter
@@ -214,6 +211,12 @@ contract RayFi is ERC20, Ownable {
      * @param vaultToken The address of the vault that does not exist
      */
     error RayFi__VaultDoesNotExist(address vaultToken);
+
+    /**
+     * @dev Triggered when trying to retrieve RayFi tokens from the contract
+     * This is a security measure to prevent malicious retrieval of RayFi tokens
+     */
+    error RayFi__CannotRetrieveRayFi();
 
     /**
      * @dev Indicates a failure in setting new fees due to the total fees being too high
@@ -480,6 +483,31 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
+     * @notice This function allows the owner to retrieve any ERC20 token other than RayFi stuck in the contract
+     * @dev Retrieving RayFi tokens is not allowed both because they cannot be manually transferred to the contract
+     * and to prevent malicious retrieval of staked RayFi tokens in case the owner wallet is compromised
+     * @param token The address of the token to retrieve
+     * @param to The address to send the tokens to
+     * @param value The amount of tokens to retrieve
+     */
+    function retrieveERC20(address token, address to, uint256 value) external onlyOwner {
+        if (token == address(this)) {
+            revert RayFi__CannotRetrieveRayFi();
+        }
+        ERC20(token).transfer(to, value);
+    }
+
+    /**
+     * @notice This function allows the owner to retrieve BNB stuck in the contract
+     * @param to The address to send the BNB to
+     * @param value The amount of BNB to retrieve
+     */
+    function retrieveBNB(address to, uint256 value) external onlyOwner {
+        payable(to).transfer(value);
+    }
+
+
+    /**
      * @notice Updates the fee amounts for buys and sells while ensuring the total fees do not exceed maximum
      * @param buyFee The new buy fee
      * @param sellFee The new sell fee
@@ -691,7 +719,7 @@ contract RayFi is ERC20, Ownable {
      */
     function _update(address from, address to, uint256 value) internal override {
         if (to == address(this)) {
-            revert RayFi__CannotManuallySendRayFisToTheContract();
+            revert RayFi__CannotManuallySendRayFiToTheContract();
         }
 
         if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {

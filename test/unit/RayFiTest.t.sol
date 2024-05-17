@@ -206,8 +206,32 @@ contract RayFiTest is Test {
         rayFi.getSharesBalanceOf(address(this));
     }
 
+    function testCanRetrieveERC20FromContract() public {
+        rewardToken.mint(address(rayFi), TRANSFER_AMOUNT);
+
+        vm.prank(msg.sender);
+        rayFi.retrieveERC20(address(rewardToken), address(this), TRANSFER_AMOUNT);
+
+        assertEq(rewardToken.balanceOf(address(this)), TRANSFER_AMOUNT);
+    }
+
+    function testCanRetrieveBNBFromContract() public {
+        vm.deal(address(rayFi), TRANSFER_AMOUNT);
+
+        vm.prank(msg.sender);
+        rayFi.retrieveBNB(DUMMY_ADDRESS, TRANSFER_AMOUNT);
+
+        assertEq(DUMMY_ADDRESS.balance, TRANSFER_AMOUNT);
+    }
+
+    function testCannotRetrieveRayFiFromContract() public {
+        vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__CannotRetrieveRayFi.selector));
+        vm.prank(msg.sender);
+        rayFi.retrieveERC20(address(rayFi), address(this), TRANSFER_AMOUNT);
+    }
+
     function testCannotTransferToRayFiContract() public {
-        vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__CannotManuallySendRayFisToTheContract.selector));
+        vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__CannotManuallySendRayFiToTheContract.selector));
         vm.prank(msg.sender);
         rayFi.transfer(address(rayFi), TRANSFER_AMOUNT);
     }
