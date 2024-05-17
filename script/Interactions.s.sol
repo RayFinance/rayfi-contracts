@@ -138,3 +138,74 @@ contract PartiallyStakeRayFiUsersSingleVault is Script {
     // Excludes contract from coverage report
     function test() public {}
 }
+
+contract AddMockRayFiVaults is Script {
+    uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
+    uint256 constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
+    uint256 constant USDT_LIQUIDITY = 1_000_000 ether;
+    uint256 constant BTCB_LIQUIDITY = 100 ether;
+    uint256 constant ETH_LIQUIDITY = 1_000 ether;
+    uint256 constant BNB_LIQUIDITY = 10_000 ether;
+
+    function addMockRayFiVaults(
+        address rayFiAddress,
+        address mockUSDT,
+        address mockBTCB,
+        address mockETH,
+        address mockBNB,
+        address routerAddress
+    ) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        vm.startPrank(msg.sender);
+        rayFi.addVault(mockBTCB);
+        rayFi.addVault(mockETH);
+        rayFi.addVault(mockBNB);
+
+        IUniswapV2Router02 router = IUniswapV2Router02(routerAddress);
+        address[3] memory vaultTokens = [mockBTCB, mockETH, mockBNB];
+        uint256[3] memory vaultLiquidity = [BTCB_LIQUIDITY, ETH_LIQUIDITY, BNB_LIQUIDITY];
+        for (uint256 i; i < 3; i++) {
+            ERC20Mock(vaultTokens[i]).mint(msg.sender, vaultLiquidity[i]);
+
+            ERC20Mock(vaultTokens[i]).approve(routerAddress, vaultLiquidity[i]);
+            ERC20Mock(mockUSDT).approve(routerAddress, USDT_LIQUIDITY);
+
+            router.addLiquidity(
+                mockUSDT,
+                vaultTokens[i],
+                USDT_LIQUIDITY,
+                vaultLiquidity[i],
+                USDT_LIQUIDITY,
+                vaultLiquidity[i],
+                msg.sender,
+                block.timestamp
+            );
+        }
+        vm.stopPrank();
+    }
+
+    function run() external {
+        address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        address mostRecentDeployedMockUSDT = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
+        address mostRecentDeployedMockBTCB = DevOpsTools.get_most_recent_deployment("MockBTCB", block.chainid);
+        address mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
+        address mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
+
+        address mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+
+        vm.startBroadcast();
+        addMockRayFiVaults(
+            mostRecentDeployedRayFi,
+            mostRecentDeployedMockUSDT,
+            mostRecentDeployedMockBTCB,
+            mostRecentDeployedMockETH,
+            mostRecentDeployedMockBNB,
+            mostRecentDeployedRouter
+        );
+
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}

@@ -104,6 +104,22 @@ contract InteractionsTest is Test {
         assertEq(rayFi.getTotalRewardShares() / 2, rayFi.getTotalStakedAmount());
     }
 
+    function testAddMockRayFiVaults() public {
+        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
+        vm.startPrank(msg.sender);
+        addMockRayFiVaults.addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        );
+
+        address[4] memory vaults = [address(rayFi), address(btcb), address(eth), address(bnb)];
+        vm.startPrank(msg.sender);
+        for (uint256 i; i < vaults.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__VaultAlreadyExists.selector, vaults[i]));
+            rayFi.addVault(vaults[i]);
+        }
+        vm.stopPrank();
+    }
+
     function testDistributionNoVaults() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
