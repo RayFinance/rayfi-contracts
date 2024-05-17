@@ -741,7 +741,7 @@ contract RayFi is ERC20, Ownable {
             } else {
                 s_totalRewardShares = s_totalRewardShares + totalBalance - oldBalance;
             }
-            s_shareholders.set(shareholder, newBalance);
+            s_shareholders.set(shareholder, totalBalance);
         } else {
             _removeShareholder(shareholder);
         }
