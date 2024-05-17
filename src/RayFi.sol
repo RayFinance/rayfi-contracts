@@ -20,6 +20,18 @@ contract RayFi is ERC20, Ownable {
 
     using EnumerableMap for EnumerableMap.AddressToUintMap;
 
+    enum DistributionState {
+        Inactive,
+        ProcessingVaults,
+        ProcessingRewards
+    }
+
+    enum VaultState {
+        Ready,
+        Processing,
+        ResetPending
+    }
+
     struct Vault {
         uint256 vaultId;
         uint256 totalVaultShares;
@@ -27,6 +39,7 @@ contract RayFi is ERC20, Ownable {
         uint256 lastProcessedIndex;
         mapping(address user => uint256 withdrawnRewards) withdrawnRewards;
         EnumerableMap.AddressToUintMap stakers;
+        VaultState state;
     }
 
     /////////////////////
@@ -65,6 +78,8 @@ contract RayFi is ERC20, Ownable {
     address[] private s_vaultTokens;
 
     EnumerableMap.AddressToUintMap private s_shareholders;
+
+    DistributionState private s_distributionState;
 
     ////////////////
     /// Events    //
@@ -322,7 +337,7 @@ contract RayFi is ERC20, Ownable {
      * @param vaultTokens The list of vaults to distribute rewards to, can be left empty to distribute to all vaults
      */
     function distributeRewardsStateless(uint8 maxSwapSlippage, address[] memory vaultTokens) external onlyOwner {
-        if (s_isProcessingRewards) {
+        if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
         }
 
@@ -373,7 +388,8 @@ contract RayFi is ERC20, Ownable {
     {
         address rewardToken = s_rewardToken;
         uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
-        if (totalUnclaimedRewards <= 0 && !s_isProcessingRewards) {
+        bool isDistributionInactive = s_distributionState == DistributionState.Inactive;
+        if (totalUnclaimedRewards <= 0 && isDistributionInactive) {
             revert RayFi__NothingToDistribute();
         }
 
@@ -385,13 +401,12 @@ contract RayFi is ERC20, Ownable {
             }
 
             uint256 totalRewardsToReinvest;
-            if (!s_isProcessingRewards) {
+            if (isDistributionInactive) {
                 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
-                s_isProcessingRewards = true;
-                s_isProcessingVaults = true;
+                s_distributionState = DistributionState.ProcessingVaults;
             }
 
-            if (s_isProcessingVaults) {
+            if (s_distributionState == DistributionState.ProcessingVaults) {
                 isComplete = _processVaults(
                     vaultTokens,
                     rewardToken,
@@ -401,42 +416,30 @@ contract RayFi is ERC20, Ownable {
                     gasForRewards,
                     true
                 );
-                if (isComplete) {
-                    s_isProcessingVaults = false;
+                if (!isComplete) {
+                    return false;
                 }
             }
 
             uint256 totalNonStakedAmount = totalRewardShares - totalStakedShares;
             if (totalNonStakedAmount >= 1) {
-                uint256 magnifiedRewardPerShare;
-                uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
-                if (s_isProcessingRewards && lastMagnifiedRewardPerShare >= 1) {
-                    magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
-                } else {
+                if (s_distributionState != DistributionState.ProcessingRewards) {
                     totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
-                    magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
-                    s_magnifiedRewardPerShare = magnifiedRewardPerShare;
+                    s_magnifiedRewardPerShare += _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
+                    s_distributionState = DistributionState.ProcessingRewards;
                 }
-                isComplete = _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, true);
+                isComplete = _processRewards(gasForRewards, s_magnifiedRewardPerShare, rewardToken, true);
             }
         } else {
-            if (!s_isProcessingRewards) {
-                s_isProcessingRewards = true;
+            if (isDistributionInactive) {
+                s_magnifiedRewardPerShare += _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
+                s_distributionState = DistributionState.ProcessingRewards;
             }
-
-            uint256 magnifiedRewardPerShare;
-            uint256 lastMagnifiedRewardPerShare = s_magnifiedRewardPerShare;
-            if (lastMagnifiedRewardPerShare >= 1) {
-                magnifiedRewardPerShare = lastMagnifiedRewardPerShare;
-            } else {
-                magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
-                s_magnifiedRewardPerShare = magnifiedRewardPerShare;
-            }
-            isComplete = _processRewards(gasForRewards, magnifiedRewardPerShare, rewardToken, true);
+            isComplete = _processRewards(gasForRewards, s_magnifiedRewardPerShare, rewardToken, true);
         }
 
         if (isComplete) {
-            s_isProcessingRewards = false;
+            s_distributionState = DistributionState.Inactive;
         }
     }
 
@@ -928,8 +931,10 @@ contract RayFi is ERC20, Ownable {
 
         for (uint256 i; i < vaultTokens.length; ++i) {
             address vaultToken = vaultTokens[i];
-            uint256 totalStakedAmountInVault = s_vaults[vaultToken].totalVaultShares;
-            if (totalStakedAmountInVault <= 0) {
+            Vault storage vault = s_vaults[vaultToken];
+            uint256 totalStakedAmountInVault = vault.totalVaultShares;
+            VaultState startingVaultState = vault.state;
+            if (totalStakedAmountInVault <= 0 || startingVaultState == VaultState.ResetPending) {
                 continue;
             }
 
@@ -942,23 +947,28 @@ contract RayFi is ERC20, Ownable {
 
             uint256 magnifiedVaultRewardsPerShare;
             if (isStateful) {
-                uint256 lastMagnifiedRewardPerShare = s_vaults[vaultToken].magnifiedRewardPerShare;
-                if (s_isProcessingVaults && lastMagnifiedRewardPerShare >= 1) {
-                    magnifiedVaultRewardsPerShare = lastMagnifiedRewardPerShare;
-                } else {
-                    magnifiedVaultRewardsPerShare =
+                if (startingVaultState != VaultState.Processing) {
+                    vault.magnifiedRewardPerShare +=
                         _calculateRewardPerShare(vaultTokensToDistribute, totalStakedAmountInVault);
-                    s_vaults[vaultToken].magnifiedRewardPerShare = magnifiedVaultRewardsPerShare;
+                    vault.state = VaultState.Processing;
                 }
+                magnifiedVaultRewardsPerShare = vault.magnifiedRewardPerShare;
             } else {
                 magnifiedVaultRewardsPerShare =
                     _calculateRewardPerShare(vaultTokensToDistribute, totalStakedAmountInVault);
             }
 
             if (_processVault(gasForRewards, magnifiedVaultRewardsPerShare, vaultToken, isStateful)) {
+                vault.state = VaultState.ResetPending;
                 continue;
             } else {
                 return false;
+            }
+        }
+
+        if (isStateful) {
+            for (uint256 i; i < vaultTokens.length; ++i) {
+                s_vaults[vaultTokens[i]].state = VaultState.Ready;
             }
         }
         return true;
