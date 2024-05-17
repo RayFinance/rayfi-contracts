@@ -1,0 +1,147 @@
+Compiling 51 files with Solc 0.8.20
+Compiling 12 files with Solc 0.5.16
+Compiling 12 files with Solc 0.6.6
+Solc 0.5.16 finished in 220.25ms
+Solc 0.6.6 finished in 353.39ms
+Solc 0.8.20 finished in 7.34s
+Compiler run successful with warnings:
+Warning: Contract code size exceeds 24576 bytes (a limit introduced in Spurious Dragon). This contract may not be deployable on mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+lib/v2-periphery/contracts/UniswapV2Router02.sol:12:1: Warning: Contract code size exceeds 24576 bytes (a limit introduced in Spurious Dragon). This contract may not be deployable on mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+contract UniswapV2Router02 is IUniswapV2Router02 {
+^ (Relevant source part starts here and spans across multiple lines).
+Analysing contracts...
+Running tests...
+
+Ran 1 test for script/Interactions.s.sol:PartiallyStakeRayFiUsersSingleVault
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 493.80µs (169.30µs CPU time)
+
+Ran 1 test for script/DeployRayFi.s.sol:DeployRayFi
+[PASS] test() (gas: 122)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.65ms (81.20µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:FundRayFi
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 345.80µs (99.00µs CPU time)
+
+Ran 1 test for test/mocks/MockBNB.sol:MockBNB
+[PASS] test() (gas: 254)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 486.30µs (110.80µs CPU time)
+
+Ran 1 test for script/DeployMockVaults.s.sol:DeployMockVaults
+[PASS] test() (gas: 144)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.22ms (141.10µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:FullyStakeRayFiUsersMultipleVaults
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.68ms (146.10µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:PartiallyStakeRayFiUsersMultipleVaults
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 348.70µs (89.00µs CPU time)
+
+Ran 1 test for test/mocks/MockBTCB.sol:MockBTCB
+[PASS] test() (gas: 254)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 530.10µs (153.70µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:FullyStakeRayFiUsersSingleVault
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 480.70µs (136.80µs CPU time)
+
+Ran 1 test for test/mocks/MockETH.sol:MockETH
+[PASS] test() (gas: 254)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 449.40µs (99.30µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:CreateRayFiUsers
+[PASS] test() (gas: 188)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 613.20µs (93.60µs CPU time)
+
+Ran 1 test for script/HelperConfig.s.sol:HelperConfig
+[PASS] test() (gas: 188)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 21.19ms (115.20µs CPU time)
+
+Ran 1 test for test/mocks/MockUSDT.sol:MockUSDT
+[PASS] test() (gas: 254)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 548.90µs (178.60µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:CreateRayFiLiquidityPool
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 559.00µs (113.90µs CPU time)
+
+Ran 1 test for script/Interactions.s.sol:AddMockRayFiVaults
+[PASS] test() (gas: 166)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 527.20µs (123.60µs CPU time)
+
+Ran 48 tests for test/unit/RayFiTest.t.sol:RayFiTest
+[PASS] testCannotAddExistingVaults() (gas: 64298)
+[PASS] testCannotAddZeroAddressVaults() (gas: 14614)
+[PASS] testCannotRemoveInexistentVaults() (gas: 15032)
+[PASS] testCannotTransferToRayFiContract() (gas: 10858)
+[PASS] testDistributionRevertsOnZeroRewardBalance() (gas: 39544)
+[PASS] testDistributionToSpecificVaultWorks() (gas: 2697677)
+[PASS] testERC20WasInitializedCorrectly() (gas: 25300)
+[PASS] testEmptyVaultsDoNotBreakDistribution() (gas: 2679541)
+[PASS] testOnlyOwnerCanStartDistribution() (gas: 13300)
+[PASS] testRayFiWasInitializedCorrectly() (gas: 29035)
+[PASS] testReinvetmentWithNonZeroSlippageWorks() (gas: 2701996)
+[PASS] testRevertsOnZeroAddressArguments() (gas: 114096)
+[PASS] testSetFeeAmounts() (gas: 36534)
+[PASS] testSetFeeReceiver() (gas: 36322)
+[PASS] testSetIsExcludedFromRewards() (gas: 399094)
+[PASS] testSetMinimumTokenBalanceForRewards() (gas: 46277)
+[PASS] testSetRewardToken() (gas: 36285)
+[PASS] testSetRouter() (gas: 34147)
+[PASS] testSetSwapReceiver() (gas: 34115)
+[PASS] testStakingRevertsOnInexistentVault() (gas: 43546)
+[PASS] testStakingRevertsOnInsufficientBalance() (gas: 180274)
+[PASS] testStakingRevertsOnInsufficientInput() (gas: 41038)
+[PASS] testStatefulDistributionAndReinvestmentWorksForMultipleUsers() (gas: 33257054)
+[PASS] testStatefulDistributionEmitsEvents() (gas: 143194)
+[PASS] testStatefulDistributionRevertsOnInsufficientGas() (gas: 2765590)
+[PASS] testStatefulDistributionWorksForMultipleUsers() (gas: 16921119)
+[PASS] testStatefulReinvestmentWorksForMultipleUsers() (gas: 25553361)
+[PASS] testStatelessDistributionAndReinvestmentWorksForMultipleUsers() (gas: 28243562)
+[PASS] testStatelessDistributionEmitsEvents() (gas: 94213)
+[PASS] testStatelessDistributionRevertsIfStatefulDistributionIsInProgress() (gas: 11682213)
+[PASS] testStatelessDistributionWorksForMultipleUsers() (gas: 14422552)
+[PASS] testStatelessReinvestmentEmitsEvents() (gas: 2697956)
+[PASS] testStatelessReinvestmentWorksForMultipleUsers() (gas: 23040060)
+[PASS] testSwapsTakeFees() (gas: 2569446)
+[PASS] testSwapsWork() (gas: 2444269)
+[PASS] testTransferFromRevertsWhenInsufficientAllowance() (gas: 16105)
+[PASS] testTransferFromWorksAndTakesFees() (gas: 271958)
+[PASS] testTransferRevertsWhenInsufficientBalance() (gas: 27440)
+[PASS] testTransferRevertsWhenInvalidReceiver() (gas: 10562)
+[PASS] testTransferRevertsWhenInvalidSender() (gas: 14436)
+[PASS] testTransferToFeeExemptAddressWorks() (gas: 189622)
+[PASS] testTransferWorksAndTakesFees() (gas: 264356)
+[PASS] testTransfersUpdateShareholdersSet() (gas: 191492)
+[PASS] testUnstakingRevertsOnInsufficientStakedBalance() (gas: 347070)
+[PASS] testUsersCanStake() (gas: 267283)
+[PASS] testUsersCanUnstake() (gas: 444891)
+[PASS] testVaultsCanBeAdded() (gas: 267917)
+[PASS] testVaultsCanBeRemoved() (gas: 20624)
+Suite result: ok. 48 passed; 0 failed; 0 skipped; finished in 766.93ms (1.41s CPU time)
+
+Ran 14 tests for test/integration/Interactions.t.sol:InteractionsTest
+[PASS] testAddMockRayFiVaults() (gas: 8620704)
+[PASS] testCreateRayFiLiquidityPool() (gas: 4092143)
+[PASS] testCreateRayFiUsers() (gas: 12680990)
+[PASS] testDistributionNoVaults() (gas: 17265893)
+[PASS] testDistributionOnlyMultipleVaults() (gas: 72110769)
+[PASS] testDistributionOnlySingleVault() (gas: 29214258)
+[PASS] testFullyStakeRayFiUsersMultipleVaults() (gas: 56015687)
+[PASS] testFullyStakeRayFiUsersSingleVault() (gas: 22695486)
+[PASS] testFundRayFi() (gas: 1484980)
+[PASS] testMixedDistributionMultipleVaultsStateful() (gas: 89795267)
+[PASS] testMixedDistributionMultipleVaultsStateless() (gas: 77032115)
+[PASS] testMixedDistributionSingleVault() (gas: 34420218)
+[PASS] testPartiallyStakeRayFiUsersMultipleVaults() (gas: 57831663)
+[PASS] testPartiallyStakeRayFiUsersSingleVault() (gas: 24730418)
+Suite result: ok. 14 passed; 0 failed; 0 skipped; finished in 849.11ms (3.94s CPU time)
+
+Ran 17 test suites in 876.34ms (1.65s CPU time): 77 tests passed, 0 failed, 0 skipped (77 total tests)
+| File          | % Lines           | % Statements      | % Branches       | % Funcs         |
+|---------------|-------------------|-------------------|------------------|-----------------|
+| src/RayFi.sol | 100.00% (314/314) | 100.00% (387/387) | 84.92% (107/126) | 100.00% (42/42) |
+| Total         | 100.00% (314/314) | 100.00% (387/387) | 84.92% (107/126) | 100.00% (42/42) |
