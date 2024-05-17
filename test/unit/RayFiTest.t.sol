@@ -709,6 +709,21 @@ contract RayFiTest is Test {
         vm.stopPrank();
     }
 
+    function testStakingIsDisabledDuringDistribution() public liquidityAdded fundUserBase {
+        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rewardToken.transfer(address(rayFi), TRANSFER_AMOUNT);
+        rayFi.stake(address(rayFi), TRANSFER_AMOUNT);
+
+        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0));
+
+        vm.expectRevert(RayFi.RayFi__DistributionInProgress.selector);
+        rayFi.stake(address(rayFi), TRANSFER_AMOUNT);
+        vm.expectRevert(RayFi.RayFi__DistributionInProgress.selector);
+        rayFi.unstake(address(rayFi), TRANSFER_AMOUNT);
+        vm.stopPrank();
+    }
+
     function testDistributionToSpecificVaultWorks() public liquidityAdded minimumBalanceForRewardsSet {
         rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
         vm.startPrank(msg.sender);

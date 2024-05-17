@@ -242,7 +242,7 @@ contract RayFi is ERC20, Ownable {
     error RayFi__InsufficientGas(uint256 gasRequested, uint256 gasProvided);
 
     /**
-     * @dev Triggered when trying to start a stateless distribution while a stateful distribution is in progress
+     * @dev Triggered when trying to alter the state of the distribution while it is already in progress
      */
     error RayFi__DistributionInProgress();
 
@@ -306,6 +306,8 @@ contract RayFi is ERC20, Ownable {
             revert RayFi__InsufficientTokensToStake(s_minimumTokenBalanceForRewards);
         } else if (s_vaults[vault].vaultId <= 0) {
             revert RayFi__VaultDoesNotExist(vault);
+        } else if (s_distributionState != DistributionState.Inactive) {
+            revert RayFi__DistributionInProgress();
         }
 
         super._update(msg.sender, address(this), value);
@@ -322,6 +324,8 @@ contract RayFi is ERC20, Ownable {
         uint256 stakedBalance = s_vaults[vault].stakers.get(msg.sender);
         if (stakedBalance < value) {
             revert RayFi__InsufficientStakedBalance(stakedBalance, value);
+        } else if (s_distributionState != DistributionState.Inactive) {
+            revert RayFi__DistributionInProgress();
         }
 
         _unstake(vault, msg.sender, value);
