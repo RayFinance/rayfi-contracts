@@ -209,3 +209,65 @@ contract AddMockRayFiVaults is Script {
     // Excludes contract from coverage report
     function test() public {}
 }
+
+contract FullyStakeRayFiUsersMultipleVaults is Script {
+    function fullyStakeRayFiUsersMultipleVaults(address rayFiAddress, address[3] memory vaultTokens) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        address[] memory users = rayFi.getShareholders();
+        for (uint256 i; i < users.length; i++) {
+            vm.startPrank(users[i]);
+            uint256 balance = rayFi.balanceOf(users[i]);
+            rayFi.stake(vaultTokens[0], balance / 4);
+            rayFi.stake(vaultTokens[1], balance / 4);
+            rayFi.stake(vaultTokens[2], balance / 4);
+            rayFi.stake(rayFiAddress, rayFi.balanceOf(users[i]));
+            vm.stopPrank();
+        }
+    }
+
+    function run() external {
+        address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        address mostRecentDeployedMockBTCB = DevOpsTools.get_most_recent_deployment("MockBTCB", block.chainid);
+        address mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
+        address mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
+        vm.startBroadcast();
+        address[3] memory vaultTokens =
+            [mostRecentDeployedMockBTCB, mostRecentDeployedMockETH, mostRecentDeployedMockBNB];
+        fullyStakeRayFiUsersMultipleVaults(mostRecentDeployedRayFi, vaultTokens);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}
+
+contract PartiallyStakeRayFiUsersMultipleVaults is Script {
+    function partiallyStakeRayFiUsersMultipleVaults(address rayFiAddress, address[3] memory vaultTokens) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        address[] memory users = rayFi.getShareholders();
+        for (uint256 i; i < users.length; i++) {
+            vm.startPrank(users[i]);
+            uint256 balance = rayFi.balanceOf(users[i]);
+            rayFi.stake(vaultTokens[0], balance / 8);
+            rayFi.stake(vaultTokens[1], balance / 8);
+            rayFi.stake(vaultTokens[2], balance / 8);
+            rayFi.stake(rayFiAddress, balance / 8);
+            vm.stopPrank();
+        }
+    }
+
+    function run() external {
+        address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        address mostRecentDeployedMockBTCB = DevOpsTools.get_most_recent_deployment("MockBTCB", block.chainid);
+        address mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
+        address mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
+        vm.startBroadcast();
+        address[3] memory vaultTokens =
+            [mostRecentDeployedMockBTCB, mostRecentDeployedMockETH, mostRecentDeployedMockBNB];
+        partiallyStakeRayFiUsersMultipleVaults(mostRecentDeployedRayFi, vaultTokens);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}

@@ -120,6 +120,50 @@ contract InteractionsTest is Test {
         vm.stopPrank();
     }
 
+    function testFullyStakeRayFiUsersMultipleVaults() public {
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+        vm.stopPrank();
+
+        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
+        vm.startPrank(msg.sender);
+        addMockRayFiVaults.addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        );
+
+        FullyStakeRayFiUsersMultipleVaults fullyStakeRayFiUsersMultipleVaults = new FullyStakeRayFiUsersMultipleVaults();
+        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
+        fullyStakeRayFiUsersMultipleVaults.fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+
+        assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedAmount());
+    }
+
+    function testPartiallyStakeRayFiUsersMultipleVaults() public {
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+        vm.stopPrank();
+
+        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
+        vm.startPrank(msg.sender);
+        addMockRayFiVaults.addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        );
+
+        PartiallyStakeRayFiUsersMultipleVaults partiallyStakeRayFiUsersMultipleVaults =
+            new PartiallyStakeRayFiUsersMultipleVaults();
+        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
+        partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+
+        assert(
+            rayFi.getTotalStakedAmount()
+                >= rayFi.getTotalRewardShares() / 2 - ACCEPTED_PRECISION_LOSS * USER_COUNT * vaults.length
+                && rayFi.getTotalStakedAmount()
+                    <= rayFi.getTotalRewardShares() / 2 + ACCEPTED_PRECISION_LOSS * USER_COUNT * vaults.length
+        );
+    }
+
     function testDistributionNoVaults() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
@@ -209,5 +253,169 @@ contract InteractionsTest is Test {
             assert(rewardToken.balanceOf(users[i]) >= FUND_AMOUNT / (users.length * 2) - ACCEPTED_PRECISION_LOSS);
         }
     }
+
+    function testDistributionOnlyMultipleVaults() public {
+        FundRayFi fundRayFi = new FundRayFi();
+        fundRayFi.fundRayFi(address(rayFi));
+
+        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
+        vm.startPrank(msg.sender);
+        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+
+        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
+        vm.startPrank(msg.sender);
+        addMockRayFiVaults.addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        );
+
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+
+        FullyStakeRayFiUsersMultipleVaults fullyStakeRayFiUsersMultipleVaults = new FullyStakeRayFiUsersMultipleVaults();
+        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
+        fullyStakeRayFiUsersMultipleVaults.fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+
+        address[] memory users = rayFi.getShareholders();
+        uint256[] memory stakedBalancesBefore = new uint256[](users.length);
+        for (uint256 i; i < users.length; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateless(0, new address[](0));
+        vm.stopPrank();
+
+        uint256 amountOutRayFi = router.getAmountOut(FUND_AMOUNT / 4, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        uint256 amountOutBTCB = router.getAmountOut(FUND_AMOUNT / 4, USDT_LIQUIDITY, BTCB_LIQUIDITY);
+        uint256 amountOutETH = router.getAmountOut(FUND_AMOUNT / 4, USDT_LIQUIDITY, ETH_LIQUIDITY);
+        uint256 amountOutBNB = router.getAmountOut(FUND_AMOUNT / 4, USDT_LIQUIDITY, BNB_LIQUIDITY);
+        for (uint256 i; i < users.length; ++i) {
+            assert(
+                rayFi.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOutRayFi / users.length - ACCEPTED_PRECISION_LOSS
+            );
+            assert(btcb.balanceOf(users[i]) >= amountOutBTCB / users.length - ACCEPTED_PRECISION_LOSS);
+            assert(eth.balanceOf(users[i]) >= amountOutETH / users.length - ACCEPTED_PRECISION_LOSS);
+            assert(bnb.balanceOf(users[i]) >= amountOutBNB / users.length - ACCEPTED_PRECISION_LOSS);
         }
     }
+
+    function testMixedDistributionMultipleVaultsStateless() public {
+        FundRayFi fundRayFi = new FundRayFi();
+        fundRayFi.fundRayFi(address(rayFi));
+
+        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
+        vm.startPrank(msg.sender);
+        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+
+        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
+        vm.startPrank(msg.sender);
+        addMockRayFiVaults.addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        );
+
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+
+        PartiallyStakeRayFiUsersMultipleVaults partiallyStakeRayFiUsersMultipleVaults =
+            new PartiallyStakeRayFiUsersMultipleVaults();
+        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
+        partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+
+        address[] memory users = rayFi.getShareholders();
+        uint256[] memory stakedBalancesBefore = new uint256[](users.length);
+        for (uint256 i; i < users.length; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+        uint256 deployerBalanceBefore = rewardToken.balanceOf(msg.sender);
+
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateless(0, new address[](0));
+        vm.stopPrank();
+
+        uint256 amountOutRayFi = router.getAmountOut(FUND_AMOUNT / 8, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        uint256 amountOutBTCB = router.getAmountOut(FUND_AMOUNT / 8, USDT_LIQUIDITY, BTCB_LIQUIDITY);
+        uint256 amountOutETH = router.getAmountOut(FUND_AMOUNT / 8, USDT_LIQUIDITY, ETH_LIQUIDITY);
+        uint256 amountOutBNB = router.getAmountOut(FUND_AMOUNT / 8, USDT_LIQUIDITY, BNB_LIQUIDITY);
+        for (uint256 i; i < users.length; ++i) {
+            if (users[i] == msg.sender) {
+                assert(
+                    rewardToken.balanceOf(users[i])
+                        >= deployerBalanceBefore + FUND_AMOUNT / 2 / users.length - ACCEPTED_PRECISION_LOSS
+                );
+            } else {
+                assert(rewardToken.balanceOf(users[i]) >= FUND_AMOUNT / 2 / users.length - ACCEPTED_PRECISION_LOSS);
+            }
+            assert(
+                rayFi.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOutRayFi / users.length - ACCEPTED_PRECISION_LOSS
+            );
+            assert(btcb.balanceOf(users[i]) >= amountOutBTCB / users.length - ACCEPTED_PRECISION_LOSS);
+            assert(eth.balanceOf(users[i]) >= amountOutETH / users.length - ACCEPTED_PRECISION_LOSS);
+            assert(bnb.balanceOf(users[i]) >= amountOutBNB / users.length - ACCEPTED_PRECISION_LOSS);
+        }
+    }
+
+    function testMixedDistributionMultipleVaultsStateful() public {
+        FundRayFi fundRayFi = new FundRayFi();
+        fundRayFi.fundRayFi(address(rayFi));
+
+        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
+        vm.startPrank(msg.sender);
+        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+
+        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
+        vm.startPrank(msg.sender);
+        addMockRayFiVaults.addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        );
+
+        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
+        vm.startPrank(msg.sender);
+        createRayFiUsers.createRayFiUsers(address(rayFi));
+
+        PartiallyStakeRayFiUsersMultipleVaults partiallyStakeRayFiUsersMultipleVaults =
+            new PartiallyStakeRayFiUsersMultipleVaults();
+        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
+        partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+
+        address[] memory users = rayFi.getShareholders();
+        uint256[] memory stakedBalancesBefore = new uint256[](users.length);
+        for (uint256 i; i < users.length; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+        uint256 deployerBalanceBefore = rewardToken.balanceOf(msg.sender);
+
+        vm.startPrank(msg.sender);
+        for (uint256 i; i < MAX_ATTEMPTS; ++i) {
+            if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0))) {
+                break;
+            }
+        }
+        vm.stopPrank();
+
+        uint256 amountOutRayFi = router.getAmountOut(FUND_AMOUNT / 8, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        uint256 amountOutBTCB = router.getAmountOut(FUND_AMOUNT / 8, USDT_LIQUIDITY, BTCB_LIQUIDITY);
+        uint256 amountOutETH = router.getAmountOut(FUND_AMOUNT / 8, USDT_LIQUIDITY, ETH_LIQUIDITY);
+        uint256 amountOutBNB = router.getAmountOut(FUND_AMOUNT / 8, USDT_LIQUIDITY, BNB_LIQUIDITY);
+        for (uint256 i; i < users.length; ++i) {
+            if (users[i] == msg.sender) {
+                assert(
+                    rewardToken.balanceOf(users[i])
+                        >= deployerBalanceBefore + FUND_AMOUNT / 2 / users.length - ACCEPTED_PRECISION_LOSS
+                );
+            } else {
+                assert(rewardToken.balanceOf(users[i]) >= FUND_AMOUNT / 2 / users.length - ACCEPTED_PRECISION_LOSS);
+            }
+            assert(
+                rayFi.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOutRayFi / users.length - ACCEPTED_PRECISION_LOSS
+            );
+            assert(btcb.balanceOf(users[i]) >= amountOutBTCB / users.length - ACCEPTED_PRECISION_LOSS);
+            assert(eth.balanceOf(users[i]) >= amountOutETH / users.length - ACCEPTED_PRECISION_LOSS);
+            assert(bnb.balanceOf(users[i]) >= amountOutBNB / users.length - ACCEPTED_PRECISION_LOSS);
+        }
+    }
+}
