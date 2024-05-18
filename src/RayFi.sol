@@ -5,6 +5,7 @@ pragma solidity ^0.8.20;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 /**
@@ -19,6 +20,7 @@ contract RayFi is ERC20, Ownable {
     //////////////
 
     using EnumerableMap for EnumerableMap.AddressToUintMap;
+    using Checkpoints for Checkpoints.Trace160;
 
     enum DistributionState {
         Inactive,
@@ -45,15 +47,16 @@ contract RayFi is ERC20, Ownable {
     // State Variables //
     /////////////////////
 
-    uint256 private constant MAGNITUDE = 2 ** 128;
-    uint32 private constant MAX_SUPPLY = 10_000_000;
+    uint256 private constant MAGNITUDE = type(uint128).max;
+    uint128 private constant MAX_SUPPLY = 10_000_000 ether;
     uint8 private constant MAX_FEES = 10;
 
     uint256 private s_totalStakedShares;
     uint256 private s_totalRewardShares;
     uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
-    uint256 private s_minimumTokenBalanceForRewards;
+    uint128 private s_minimumTokenBalanceForRewards;
+    uint96 private s_snapshotId;
 
     IUniswapV2Router02 private s_router;
 
@@ -61,15 +64,16 @@ contract RayFi is ERC20, Ownable {
     address private s_swapReceiver;
     address private s_feeReceiver;
 
-    bool private s_areTradingFeesEnabled = true;
-
     uint8 private s_buyFee;
     uint8 private s_sellFee;
+
+    bool private s_areTradingFeesEnabled = true;
 
     mapping(address user => bool isExemptFromFees) private s_isFeeExempt;
     mapping(address user => bool isExcludedFromRewards) private s_isExcludedFromRewards;
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
+    mapping(address user => Checkpoints.Trace160 balanceSnapshot) private s_balancesSnapshots;
     mapping(address token => Vault vault) private s_vaults;
 
     address[] private s_vaultTokens;
@@ -97,6 +101,12 @@ contract RayFi is ERC20, Ownable {
      * @param totalStakedShares The total amount of RayFi staked in this contract
      */
     event RayFiUnstaked(address indexed unstaker, uint256 indexed unstakedAmount, uint256 indexed totalStakedShares);
+
+    /**
+     * @notice Emitted when a snapshot is taken
+     * @param snapshotId The id of the snapshot
+     */
+    event SnapshotTaken(uint96 indexed snapshotId);
 
     /**
      * @notice Emitted when the fee amounts for buys and sells are updated
@@ -286,6 +296,7 @@ contract RayFi is ERC20, Ownable {
 
         s_isFeeExempt[swapReceiver] = true;
 
+        s_isExcludedFromRewards[feeReceiver] = true;
         s_isExcludedFromRewards[swapReceiver] = true;
         s_isExcludedFromRewards[address(this)] = true;
         s_isExcludedFromRewards[address(0)] = true;
@@ -293,7 +304,7 @@ contract RayFi is ERC20, Ownable {
         s_vaultTokens.push(address(this));
         s_vaults[address(this)].vaultId = s_vaultTokens.length;
 
-        _mint(msg.sender, MAX_SUPPLY * (10 ** decimals()));
+        _mint(msg.sender, MAX_SUPPLY);
     }
 
     ///////////////////////////
@@ -315,7 +326,7 @@ contract RayFi is ERC20, Ownable {
 
         super._update(msg.sender, address(this), value);
         _stake(vault, msg.sender, value);
-        _updateShareholder(msg.sender);
+        _updateShareholder(msg.sender, s_balancesSnapshots[msg.sender], uint160(value), s_snapshotId, _sub);
     }
 
     /**
@@ -333,7 +344,7 @@ contract RayFi is ERC20, Ownable {
 
         _unstake(vault, msg.sender, value);
         super._update(address(this), msg.sender, value);
-        _updateShareholder(msg.sender);
+        _updateShareholder(msg.sender, s_balancesSnapshots[msg.sender], uint160(value), s_snapshotId, _add);
     }
 
     /**
@@ -396,8 +407,12 @@ contract RayFi is ERC20, Ownable {
         address rewardToken = s_rewardToken;
         uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         bool isDistributionInactive = s_distributionState == DistributionState.Inactive;
-        if (totalUnclaimedRewards <= 0 && isDistributionInactive) {
-            revert RayFi__NothingToDistribute();
+        if (isDistributionInactive) {
+            if (totalUnclaimedRewards <= 0) {
+                revert RayFi__NothingToDistribute();
+            } else {
+                _snapshot();
+            }
         }
 
         uint256 totalRewardShares = s_totalRewardShares;
@@ -546,8 +561,8 @@ contract RayFi is ERC20, Ownable {
      * @notice Sets the minimum token balance for rewards
      * @param newMinimum The new minimum token balance for rewards
      */
-    function setMinimumTokenBalanceForRewards(uint256 newMinimum) external onlyOwner {
-        uint256 oldMinimum = s_minimumTokenBalanceForRewards;
+    function setMinimumTokenBalanceForRewards(uint128 newMinimum) external onlyOwner {
+        uint128 oldMinimum = s_minimumTokenBalanceForRewards;
         s_minimumTokenBalanceForRewards = newMinimum;
         emit MinimumTokenBalanceForRewardsUpdated(newMinimum, oldMinimum);
     }
@@ -560,9 +575,9 @@ contract RayFi is ERC20, Ownable {
     function setIsExcludedFromRewards(address user, bool isExcluded) external onlyOwner {
         s_isExcludedFromRewards[user] = isExcluded;
         if (isExcluded) {
-            _removeShareholder(user);
+            _removeShareholder(user, s_balancesSnapshots[user], s_snapshotId);
         } else {
-            _updateShareholder(user);
+            _updateShareholder(user, s_balancesSnapshots[user], uint160(balanceOf(user)), s_snapshotId, _add);
         }
         emit IsUserExcludedFromRewardsUpdated(user, isExcluded);
     }
@@ -754,8 +769,9 @@ contract RayFi is ERC20, Ownable {
 
         super._update(from, to, value);
 
-        _updateShareholder(from);
-        _updateShareholder(to);
+        uint96 snapshotId = s_snapshotId;
+        _updateShareholder(from, s_balancesSnapshots[from], uint160(value), snapshotId, _sub);
+        _updateShareholder(to, s_balancesSnapshots[to], uint160(value), snapshotId, _add);
     }
 
     /**
@@ -769,14 +785,19 @@ contract RayFi is ERC20, Ownable {
         feeAmount = value * fee / 100;
         address feeReceiver = s_feeReceiver;
         super._update(from, feeReceiver, feeAmount);
-        _updateShareholder(feeReceiver);
     }
 
     /**
      * @dev Updates the shareholder list based on the new balance
      * @param shareholder The address of the shareholder
      */
-    function _updateShareholder(address shareholder) private {
+    function _updateShareholder(
+        address shareholder,
+        Checkpoints.Trace160 storage balanceSnapshot,
+        uint160 delta,
+        uint96 snapshotId,
+        function(uint160, uint160) pure returns(uint160) operation
+    ) private {
         uint256 newBalance = balanceOf(shareholder);
         uint256 totalBalance = newBalance + s_stakedBalances[shareholder];
         if (totalBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
@@ -787,8 +808,9 @@ contract RayFi is ERC20, Ownable {
                 s_totalRewardShares = s_totalRewardShares + totalBalance - oldBalance;
             }
             s_shareholders.set(shareholder, totalBalance);
+            balanceSnapshot.push(snapshotId, operation(balanceSnapshot.latest(), delta));
         } else {
-            _removeShareholder(shareholder);
+            _removeShareholder(shareholder, balanceSnapshot, snapshotId);
         }
     }
 
@@ -796,7 +818,9 @@ contract RayFi is ERC20, Ownable {
      * @dev Removes a shareholder from the list and retrieves their staked tokens
      * @param shareholder The address of the shareholder
      */
-    function _removeShareholder(address shareholder) private {
+    function _removeShareholder(address shareholder, Checkpoints.Trace160 storage balanceSnapshot, uint96 snapshotId)
+        private
+    {
         if (s_shareholders.contains(shareholder)) {
             s_totalRewardShares -= s_shareholders.get(shareholder);
             s_shareholders.remove(shareholder);
@@ -808,6 +832,7 @@ contract RayFi is ERC20, Ownable {
                 }
                 super._update(address(this), shareholder, stakedBalance);
             }
+            balanceSnapshot.push(snapshotId, 0);
         }
     }
 
@@ -849,6 +874,11 @@ contract RayFi is ERC20, Ownable {
         s_totalStakedShares -= value;
 
         emit RayFiUnstaked(user, value, s_totalStakedShares);
+    }
+
+    function _snapshot() private returns (uint96 currentSnapshot) {
+        currentSnapshot = ++s_snapshotId;
+        emit SnapshotTaken(currentSnapshot);
     }
 
     /**
@@ -893,7 +923,7 @@ contract RayFi is ERC20, Ownable {
         bool isStateful
     ) private returns (bool isComplete) {
         uint256 shareholderCount = s_shareholders.length();
-        uint256 vaultRewards;
+        uint256 earnedRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
             if (gasForRewards >= startingGas) {
@@ -904,7 +934,12 @@ contract RayFi is ERC20, Ownable {
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
                 (address user,) = s_shareholders.at(lastProcessedIndex);
-                vaultRewards += _processRewardOfUser(user, magnifiedRewardPerShare, rewardToken);
+                earnedRewards += _processRewardOfUser(
+                    user,
+                    magnifiedRewardPerShare,
+                    s_balancesSnapshots[user].upperLookupRecent(s_snapshotId - 1),
+                    rewardToken
+                );
 
                 ++lastProcessedIndex;
                 if (lastProcessedIndex >= shareholderCount) {
@@ -919,12 +954,12 @@ contract RayFi is ERC20, Ownable {
         } else {
             for (uint256 i; i < shareholderCount; ++i) {
                 (address user,) = s_shareholders.at(i);
-                vaultRewards += _processRewardOfUser(user, magnifiedRewardPerShare, rewardToken);
+                earnedRewards += _processRewardOfUser(user, magnifiedRewardPerShare, balanceOf(user), rewardToken);
             }
             isComplete = true;
         }
 
-        emit RewardsDistributed(vaultRewards, 0);
+        emit RewardsDistributed(earnedRewards, 0);
     }
 
     /**
@@ -1080,11 +1115,11 @@ contract RayFi is ERC20, Ownable {
      * @param rewardToken The address of the reward token
      * @return earnedReward The amount of rewards withdrawn
      */
-    function _processRewardOfUser(address user, uint256 magnifiedRewardPerShare, address rewardToken)
+    function _processRewardOfUser(address user, uint256 magnifiedRewardPerShare, uint256 balance, address rewardToken)
         private
         returns (uint256 earnedReward)
     {
-        earnedReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user));
+        earnedReward = _calculateReward(magnifiedRewardPerShare, balance);
         if (earnedReward >= 1) {
             ERC20(rewardToken).transfer(user, earnedReward);
         }
@@ -1145,5 +1180,25 @@ contract RayFi is ERC20, Ownable {
      */
     function _calculateRewardPerShare(uint256 totalRewards, uint256 totalShares) private pure returns (uint256) {
         return totalRewards * MAGNITUDE / totalShares;
+    }
+
+    /**
+     * @dev Low-level function to add two numbers used as a function argument for updating balance snapshots
+     * @param a The first number
+     * @param b The second number
+     * @return The sum of the two numbers
+     */
+    function _add(uint160 a, uint160 b) private pure returns (uint160) {
+        return a + b;
+    }
+
+    /**
+     * @dev Low-level function to subtract two numbers used as a function argument for updating balance snapshots
+     * @param a The first number
+     * @param b The second number
+     * @return The difference of the two numbers
+     */
+    function _sub(uint160 a, uint160 b) private pure returns (uint160) {
+        return a - b;
     }
 }

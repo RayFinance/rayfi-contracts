@@ -22,7 +22,7 @@ contract RayFiTest is Test {
     uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
     uint256 public constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
     uint256 public constant TRANSFER_AMOUNT = 10_000 ether;
-    uint256 public constant MINIMUM_TOKEN_BALANCE_FOR_REWARDS = 1_000 ether;
+    uint72 public constant MINIMUM_TOKEN_BALANCE_FOR_REWARDS = 1_000 ether;
     uint32 public constant GAS_FOR_REWARDS = 1_000_000;
     uint16 public constant USER_COUNT = 100;
     uint8 public constant MAX_ATTEMPTS = 100;
@@ -642,9 +642,9 @@ contract RayFiTest is Test {
         vm.stopPrank();
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        assertEq(entries[1].topics[0], keccak256("RewardsDistributed(uint256,uint256)"));
-        assert(entries[1].topics[1] >= bytes32(TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS));
-        assertEq(entries[1].topics[2], 0);
+        assertEq(entries[2].topics[0], keccak256("RewardsDistributed(uint256,uint256)"));
+        assert(entries[2].topics[1] >= bytes32(TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS));
+        assertEq(entries[2].topics[2], 0);
     }
 
     function testStatefulReinvestmentWorksForMultipleUsers()
@@ -864,7 +864,7 @@ contract RayFiTest is Test {
         rayFi.setMinimumTokenBalanceForRewards(MINIMUM_TOKEN_BALANCE_FOR_REWARDS);
         Vm.Log[] memory entries = vm.getRecordedLogs();
         assertEq(entries[0].topics[0], keccak256("MinimumTokenBalanceForRewardsUpdated(uint256,uint256)"));
-        assertEq(entries[0].topics[1], bytes32(MINIMUM_TOKEN_BALANCE_FOR_REWARDS));
+        assertEq(entries[0].topics[1], bytes32(uint256(MINIMUM_TOKEN_BALANCE_FOR_REWARDS)));
         assertEq(entries[0].topics[2], bytes32(0));
         assertEq(rayFi.getMinimumTokenBalanceForRewards(), MINIMUM_TOKEN_BALANCE_FOR_REWARDS);
         vm.stopPrank();
