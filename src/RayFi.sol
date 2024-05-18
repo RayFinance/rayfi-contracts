@@ -51,8 +51,8 @@ contract RayFi is ERC20, Ownable {
     uint128 private constant MAX_SUPPLY = 10_000_000 ether;
     uint8 private constant MAX_FEES = 10;
 
-    uint256 private s_totalStakedShares;
     uint256 private s_totalRewardShares;
+    uint256 private s_totalStakedShares;
     uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
     uint160 private s_minimumTokenBalanceForRewards;
@@ -79,6 +79,8 @@ contract RayFi is ERC20, Ownable {
     address[] private s_vaultTokens;
 
     EnumerableMap.AddressToUintMap private s_shareholders;
+    Checkpoints.Trace160 private s_totalRewardSharesSnapshots;
+    Checkpoints.Trace160 private s_totalStakedSharesSnapshots;
 
     DistributionState private s_distributionState;
 
@@ -415,8 +417,14 @@ contract RayFi is ERC20, Ownable {
             }
         }
 
-        uint256 totalRewardShares = s_totalRewardShares;
-        uint256 totalStakedShares = s_totalStakedShares;
+        uint256 totalRewardShares;
+        uint256 totalStakedShares;
+        {
+            // Avoid stack too deep compile errors
+            uint96 snapshotId = s_snapshotId - 1;
+            totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
+            totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
+        }
         if (totalStakedShares >= 1) {
             if (vaultTokens.length <= 0) {
                 vaultTokens = s_vaultTokens;
@@ -769,9 +777,10 @@ contract RayFi is ERC20, Ownable {
 
         super._update(from, to, value);
 
+        uint160 delta = uint160(value);
         uint96 snapshotId = s_snapshotId;
-        _updateShareholder(from, s_balancesSnapshots[from], uint160(value), snapshotId, _sub);
-        _updateShareholder(to, s_balancesSnapshots[to], uint160(value), snapshotId, _add);
+        _updateShareholder(from, s_balancesSnapshots[from], delta, snapshotId, _sub);
+        _updateShareholder(to, s_balancesSnapshots[to], delta, snapshotId, _add);
     }
 
     /**
@@ -801,14 +810,23 @@ contract RayFi is ERC20, Ownable {
         uint256 newBalance = balanceOf(shareholder);
         uint256 totalBalance = newBalance + s_stakedBalances[shareholder];
         if (totalBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
+            balanceSnapshot.push(snapshotId, operation(balanceSnapshot.latest(), delta));
             (bool success, uint256 oldBalance) = s_shareholders.tryGet(shareholder);
             if (!success) {
                 s_totalRewardShares += totalBalance;
+                s_totalRewardSharesSnapshots.push(
+                    snapshotId, _add(s_totalRewardSharesSnapshots.latest(), uint160(totalBalance))
+                );
+            } else if (totalBalance >= oldBalance) {
+                delta = uint160(totalBalance - oldBalance);
+                s_totalRewardShares += delta;
+                s_totalRewardSharesSnapshots.push(snapshotId, _add(s_totalRewardSharesSnapshots.latest(), delta));
             } else {
-                s_totalRewardShares = s_totalRewardShares + totalBalance - oldBalance;
+                delta = uint160(oldBalance - totalBalance);
+                s_totalRewardShares -= delta;
+                s_totalRewardSharesSnapshots.push(snapshotId, _sub(s_totalRewardSharesSnapshots.latest(), delta));
             }
             s_shareholders.set(shareholder, totalBalance);
-            balanceSnapshot.push(snapshotId, operation(balanceSnapshot.latest(), delta));
         } else {
             _removeShareholder(shareholder, balanceSnapshot, snapshotId);
         }
@@ -833,6 +851,7 @@ contract RayFi is ERC20, Ownable {
                 super._update(address(this), shareholder, stakedBalance);
             }
             balanceSnapshot.push(snapshotId, 0);
+            s_totalRewardSharesSnapshots.push(snapshotId, uint160(s_totalRewardShares));
         }
     }
 
@@ -850,6 +869,7 @@ contract RayFi is ERC20, Ownable {
 
         s_stakedBalances[user] += value;
         s_totalStakedShares += value;
+        s_totalStakedSharesSnapshots.push(s_snapshotId, _add(s_totalStakedSharesSnapshots.latest(), uint160(value)));
 
         emit RayFiStaked(user, value, s_totalStakedShares);
     }
@@ -872,18 +892,20 @@ contract RayFi is ERC20, Ownable {
 
         s_stakedBalances[user] -= value;
         s_totalStakedShares -= value;
+        s_totalStakedSharesSnapshots.push(s_snapshotId, _sub(s_totalStakedSharesSnapshots.latest(), uint160(value)));
 
         emit RayFiUnstaked(user, value, s_totalStakedShares);
     }
 
     function _snapshot() private returns (uint96 currentSnapshot) {
-        currentSnapshot = ++s_snapshotId;
+        currentSnapshot = s_snapshotId++;
         emit SnapshotTaken(currentSnapshot);
     }
 
     /**
      * @dev Low-level function to swap the reward token using a UniswapV2-compatible router
      * Assumes that the tokens have already been approved for spending
+     * @custom:auditor This function should be reviewed for potential vulnerabilities due to price manipulation
      * @param router The address of the UniswapV2-compatible router
      * @param tokenIn The address of the token to swap from
      * @param tokenOut The address of the token to swap to
@@ -1103,6 +1125,11 @@ contract RayFi is ERC20, Ownable {
             vault.totalVaultShares += vaultRewards;
             s_totalStakedShares += vaultRewards;
             s_totalRewardShares += vaultRewards;
+
+            uint160 delta = uint160(vaultRewards);
+            uint96 snapshotId = s_snapshotId;
+            s_totalRewardSharesSnapshots.push(snapshotId, _add(s_totalRewardSharesSnapshots.latest(), delta));
+            s_totalStakedSharesSnapshots.push(snapshotId, _add(s_totalStakedSharesSnapshots.latest(), delta));
         }
 
         emit RewardsDistributed(0, vaultRewards);
