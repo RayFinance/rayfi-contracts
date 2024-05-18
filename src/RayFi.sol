@@ -47,7 +47,7 @@ contract RayFi is ERC20, Ownable {
     // State Variables //
     /////////////////////
 
-    uint256 private constant MAGNITUDE = type(uint128).max;
+    uint128 private constant MAGNITUDE = type(uint128).max;
     uint128 private constant MAX_SUPPLY = 10_000_000 ether;
     uint8 private constant MAX_FEES = 10;
 
@@ -55,7 +55,7 @@ contract RayFi is ERC20, Ownable {
     uint256 private s_totalRewardShares;
     uint256 private s_magnifiedRewardPerShare;
     uint256 private s_lastProcessedIndex;
-    uint128 private s_minimumTokenBalanceForRewards;
+    uint160 private s_minimumTokenBalanceForRewards;
     uint96 private s_snapshotId;
 
     IUniswapV2Router02 private s_router;
@@ -561,8 +561,8 @@ contract RayFi is ERC20, Ownable {
      * @notice Sets the minimum token balance for rewards
      * @param newMinimum The new minimum token balance for rewards
      */
-    function setMinimumTokenBalanceForRewards(uint128 newMinimum) external onlyOwner {
-        uint128 oldMinimum = s_minimumTokenBalanceForRewards;
+    function setMinimumTokenBalanceForRewards(uint160 newMinimum) external onlyOwner {
+        uint160 oldMinimum = s_minimumTokenBalanceForRewards;
         s_minimumTokenBalanceForRewards = newMinimum;
         emit MinimumTokenBalanceForRewardsUpdated(newMinimum, oldMinimum);
     }
