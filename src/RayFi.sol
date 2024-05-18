@@ -904,7 +904,7 @@ contract RayFi is ERC20, Ownable {
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
                 (address user,) = s_shareholders.at(lastProcessedIndex);
-                vaultRewards += _processRewardOfUserStateFul(user, magnifiedRewardPerShare, rewardToken);
+                vaultRewards += _processRewardOfUser(user, magnifiedRewardPerShare, rewardToken);
 
                 ++lastProcessedIndex;
                 if (lastProcessedIndex >= shareholderCount) {
@@ -919,7 +919,7 @@ contract RayFi is ERC20, Ownable {
         } else {
             for (uint256 i; i < shareholderCount; ++i) {
                 (address user,) = s_shareholders.at(i);
-                vaultRewards += _processRewardOfUserStateless(user, magnifiedRewardPerShare, rewardToken);
+                vaultRewards += _processRewardOfUser(user, magnifiedRewardPerShare, rewardToken);
             }
             isComplete = true;
         }
@@ -1043,7 +1043,7 @@ contract RayFi is ERC20, Ownable {
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
                 (address user,) = vault.stakers.at(lastProcessedIndex);
-                vaultRewards += _processVaultOfUserStateful(user, magnifiedVaultRewardsPerShare, vaultToken, vault);
+                vaultRewards += _processVaultOfUser(user, magnifiedVaultRewardsPerShare, vaultToken, vault);
 
                 ++lastProcessedIndex;
                 if (lastProcessedIndex >= shareholderCount) {
@@ -1058,7 +1058,7 @@ contract RayFi is ERC20, Ownable {
         } else {
             for (uint256 i; i < shareholderCount; ++i) {
                 (address user,) = vault.stakers.at(i);
-                vaultRewards += _processVaultOfUserStateless(user, magnifiedVaultRewardsPerShare, vaultToken, vault);
+                vaultRewards += _processVaultOfUser(user, magnifiedVaultRewardsPerShare, vaultToken, vault);
             }
             isComplete = true;
         }
@@ -1080,7 +1080,7 @@ contract RayFi is ERC20, Ownable {
      * @param rewardToken The address of the reward token
      * @return earnedReward The amount of rewards withdrawn
      */
-    function _processRewardOfUserStateless(address user, uint256 magnifiedRewardPerShare, address rewardToken)
+    function _processRewardOfUser(address user, uint256 magnifiedRewardPerShare, address rewardToken)
         private
         returns (uint256 earnedReward)
     {
@@ -1098,7 +1098,7 @@ contract RayFi is ERC20, Ownable {
      * @param vault The storage pointer to the vault
      * @return vaultReward The amount of rewards withdrawn
      */
-    function _processVaultOfUserStateless(
+    function _processVaultOfUser(
         address user,
         uint256 magnifiedVaultRewardsPerShare,
         address vaultToken,
@@ -1106,53 +1106,6 @@ contract RayFi is ERC20, Ownable {
     ) private returns (uint256 vaultReward) {
         uint256 vaultBalanceOfUser = vault.stakers.get(user);
         vaultReward = _calculateReward(magnifiedVaultRewardsPerShare, vaultBalanceOfUser);
-        if (vaultReward >= 1) {
-            if (vaultToken != address(this)) {
-                ERC20(vaultToken).transfer(user, vaultReward);
-            } else {
-                unchecked {
-                    vault.stakers.set(user, vaultBalanceOfUser + vaultReward);
-                    s_stakedBalances[user] += vaultReward;
-                }
-            }
-        }
-    }
-
-    /**
-     * @notice Processes rewards for a specific token holder, saving the state of the distribution to storage
-     * @param user The address of the token holder
-     * @param magnifiedRewardPerShare The magnified reward amount per share
-     * @param rewardToken The magnified RayFi amount per share
-     * @return earnedReward The amount of rewards withdrawn
-     */
-    function _processRewardOfUserStateFul(address user, uint256 magnifiedRewardPerShare, address rewardToken)
-        private
-        returns (uint256 earnedReward)
-    {
-        earnedReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user));
-
-        if (earnedReward >= 1) {
-            ERC20(rewardToken).transfer(user, earnedReward);
-        }
-    }
-
-    /**
-     * @notice Processes rewards for a specific token holder for a specific vault
-     * @param user The address of the token holder
-     * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
-     * @param vaultToken The address of the vault token
-     * @param vault The storage pointer to the vault
-     * @return vaultReward The amount of rewards withdrawn
-     */
-    function _processVaultOfUserStateful(
-        address user,
-        uint256 magnifiedVaultRewardsPerShare,
-        address vaultToken,
-        Vault storage vault
-    ) private returns (uint256 vaultReward) {
-        uint256 vaultBalanceOfUser = vault.stakers.get(user);
-        vaultReward = _calculateReward(magnifiedVaultRewardsPerShare, vaultBalanceOfUser);
-
         if (vaultReward >= 1) {
             if (vaultToken != address(this)) {
                 ERC20(vaultToken).transfer(user, vaultReward);
