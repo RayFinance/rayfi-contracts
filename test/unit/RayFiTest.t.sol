@@ -404,18 +404,18 @@ contract RayFiTest is Test {
 
         vm.recordLogs();
         vm.startPrank(msg.sender);
-        rayFi.unstake(address(rayFi), TRANSFER_AMOUNT);
+        rayFi.unstake(address(rayFi), TRANSFER_AMOUNT / 2);
         vm.stopPrank();
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
         assertEq(entries[0].topics[0], keccak256("RayFiUnstaked(address,uint256,uint256)"));
         assertEq(entries[0].topics[1], bytes32(uint256(uint160(msg.sender))));
-        assertEq(entries[0].topics[2], bytes32(TRANSFER_AMOUNT));
-        assertEq(entries[0].topics[3], bytes32(TRANSFER_AMOUNT));
-        assertEq(rayFi.getStakedBalanceOf(msg.sender), 0);
-        assertEq(rayFi.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
-        assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT);
-        assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT);
+        assertEq(entries[0].topics[2], bytes32(TRANSFER_AMOUNT / 2));
+        assertEq(entries[0].topics[3], bytes32(TRANSFER_AMOUNT + TRANSFER_AMOUNT / 2));
+        assertEq(rayFi.getStakedBalanceOf(msg.sender), TRANSFER_AMOUNT / 2);
+        assertEq(rayFi.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT - TRANSFER_AMOUNT / 2);
+        assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT + TRANSFER_AMOUNT / 2);
+        assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT + TRANSFER_AMOUNT / 2);
         assertEq(rayFi.getSharesBalanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
 
         vm.recordLogs();
@@ -425,11 +425,11 @@ contract RayFiTest is Test {
         assertEq(entries[0].topics[0], keccak256("RayFiUnstaked(address,uint256,uint256)"));
         assertEq(entries[0].topics[1], bytes32(uint256(uint160(address(this)))));
         assertEq(entries[0].topics[2], bytes32(TRANSFER_AMOUNT));
-        assertEq(entries[0].topics[3], bytes32(0));
+        assertEq(entries[0].topics[3], bytes32(TRANSFER_AMOUNT / 2));
         assertEq(rayFi.getStakedBalanceOf(address(this)), 0);
         assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT);
-        assertEq(rayFi.balanceOf(address(rayFi)), 0);
-        assertEq(rayFi.getTotalStakedAmount(), 0);
+        assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT / 2);
+        assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT / 2);
         assertEq(rayFi.getSharesBalanceOf(address(this)), TRANSFER_AMOUNT);
     }
 
