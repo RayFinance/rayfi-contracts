@@ -37,7 +37,6 @@ contract RayFi is ERC20, Ownable {
         uint256 totalVaultShares;
         uint256 magnifiedRewardPerShare;
         uint256 lastProcessedIndex;
-        mapping(address user => uint256 withdrawnRewards) withdrawnRewards;
         EnumerableMap.AddressToUintMap stakers;
         VaultState state;
     }
@@ -71,7 +70,6 @@ contract RayFi is ERC20, Ownable {
     mapping(address user => bool isExcludedFromRewards) private s_isExcludedFromRewards;
     mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
-    mapping(address user => uint256 withdrawnRewards) private s_withdrawnRewards;
     mapping(address token => Vault vault) private s_vaults;
 
     address[] private s_vaultTokens;
@@ -434,20 +432,21 @@ contract RayFi is ERC20, Ownable {
             if (totalNonStakedAmount >= 1) {
                 if (s_distributionState != DistributionState.ProcessingRewards) {
                     totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
-                    s_magnifiedRewardPerShare += _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
+                    s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
                     s_distributionState = DistributionState.ProcessingRewards;
                 }
                 isComplete = _processRewards(gasForRewards, s_magnifiedRewardPerShare, rewardToken, true);
             }
         } else {
             if (isDistributionInactive) {
-                s_magnifiedRewardPerShare += _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
+                s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
                 s_distributionState = DistributionState.ProcessingRewards;
             }
             isComplete = _processRewards(gasForRewards, s_magnifiedRewardPerShare, rewardToken, true);
         }
 
         if (isComplete) {
+            s_magnifiedRewardPerShare = 0;
             s_distributionState = DistributionState.Inactive;
         }
     }
@@ -991,7 +990,7 @@ contract RayFi is ERC20, Ownable {
             uint256 magnifiedVaultRewardsPerShare;
             if (isStateful) {
                 if (startingVaultState != VaultState.Processing) {
-                    vault.magnifiedRewardPerShare +=
+                    vault.magnifiedRewardPerShare =
                         _calculateRewardPerShare(vaultTokensToDistribute, totalStakedAmountInVault);
                     vault.state = VaultState.Processing;
                 }
@@ -1002,6 +1001,7 @@ contract RayFi is ERC20, Ownable {
             }
 
             if (_processVault(gasForRewards, magnifiedVaultRewardsPerShare, vaultToken, isStateful)) {
+                vault.magnifiedRewardPerShare = 0;
                 vault.state = VaultState.ResetPending;
                 continue;
             } else {
@@ -1129,11 +1129,9 @@ contract RayFi is ERC20, Ownable {
         private
         returns (uint256 earnedReward)
     {
-        earnedReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user)) - s_withdrawnRewards[user];
+        earnedReward = _calculateReward(magnifiedRewardPerShare, balanceOf(user));
 
         if (earnedReward >= 1) {
-            s_withdrawnRewards[user] += earnedReward;
-
             ERC20(rewardToken).transfer(user, earnedReward);
         }
     }
@@ -1153,11 +1151,9 @@ contract RayFi is ERC20, Ownable {
         Vault storage vault
     ) private returns (uint256 vaultReward) {
         uint256 vaultBalanceOfUser = vault.stakers.get(user);
-        vaultReward = _calculateReward(magnifiedVaultRewardsPerShare, vaultBalanceOfUser) - vault.withdrawnRewards[user];
+        vaultReward = _calculateReward(magnifiedVaultRewardsPerShare, vaultBalanceOfUser);
 
         if (vaultReward >= 1) {
-            vault.withdrawnRewards[user] += vaultReward;
-
             if (vaultToken != address(this)) {
                 ERC20(vaultToken).transfer(user, vaultReward);
             } else {
