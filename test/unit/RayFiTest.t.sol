@@ -654,9 +654,8 @@ contract RayFiTest is Test {
         fundUserBase
         fullyStakeUserBase
     {
-        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
+        rewardToken.mint(address(rayFi), TRANSFER_AMOUNT);
         vm.startPrank(msg.sender);
-        rewardToken.transfer(address(rayFi), TRANSFER_AMOUNT);
         rayFi.stake(address(rayFi), rayFi.balanceOf(msg.sender));
 
         uint256[USER_COUNT] memory stakedBalancesBefore;
@@ -727,6 +726,49 @@ contract RayFiTest is Test {
             rayFi.getStakedBalanceOf(msg.sender)
                 >= stakedBalanceBeforeOwner + amountOut / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS
         );
+    }
+
+    function testTransferDuringStatefulDistributionAndReinvestmentForMultipleUsers()
+        public
+        liquidityAdded
+        minimumBalanceForRewardsSet
+        fundUserBase
+        partiallyStakeUserBase
+    {
+        rewardToken.mint(address(rayFi), TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rayFi.stake(address(rayFi), rayFi.balanceOf(msg.sender) / 2);
+
+        uint256[USER_COUNT] memory stakedBalancesBefore;
+        for (uint256 i; i < USER_COUNT; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0));
+
+        for (uint256 i = 10; i < 20; ++i) {
+            vm.startPrank(users[i]);
+            rayFi.transfer(users[i + 70], TRANSFER_AMOUNT / 10);
+            vm.stopPrank();
+        }
+
+        vm.startPrank(msg.sender);
+        for (uint256 i; i < MAX_ATTEMPTS; ++i) {
+            if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0))) {
+                break;
+            }
+        }
+        vm.stopPrank();
+
+        uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT / 2, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
+        for (uint256 i; i < USER_COUNT; ++i) {
+            assert(
+                rayFi.getStakedBalanceOf(users[i])
+                    >= stakedBalancesBefore[i] + amountOut / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS
+            );
+            assert(rewardToken.balanceOf(users[i]) >= TRANSFER_AMOUNT / 2 / (USER_COUNT + 1) - ACCEPTED_PRECISION_LOSS);
+        }
     }
 
     function testStatelessDistributionRevertsIfStatefulDistributionIsInProgress() public fundUserBase {
