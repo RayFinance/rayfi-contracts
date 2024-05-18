@@ -62,6 +62,8 @@ contract RayFi is ERC20, Ownable {
     address private s_swapReceiver;
     address private s_feeReceiver;
 
+    bool private s_areTradingFeesEnabled = true;
+
     uint8 private s_buyFee;
     uint8 private s_sellFee;
 
@@ -506,6 +508,13 @@ contract RayFi is ERC20, Ownable {
         payable(to).transfer(value);
     }
 
+    /**
+     * @notice This function allows the owner to permanently disable trading fees on the RayFi token
+     * @dev This is a one-way function and cannot be undone
+     */
+    function removeTradingFees() external onlyOwner {
+        s_areTradingFeesEnabled = false;
+    }
 
     /**
      * @notice Updates the fee amounts for buys and sells while ensuring the total fees do not exceed maximum
@@ -722,23 +731,25 @@ contract RayFi is ERC20, Ownable {
             revert RayFi__CannotManuallySendRayFiToTheContract();
         }
 
-        if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
-            // Buy order
-            uint8 buyFee = s_buyFee;
-            if (buyFee >= 1) {
-                value -= _takeFee(from, value, buyFee);
-            }
-        } else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
-            // Sell order
-            uint8 sellFee = s_sellFee;
-            if (sellFee >= 1) {
-                value -= _takeFee(from, value, sellFee);
-            }
-        } else if (!s_isFeeExempt[from] && !s_isFeeExempt[to]) {
-            // Transfer
-            uint8 transferFee = s_buyFee + s_sellFee;
-            if (transferFee >= 1) {
-                value -= _takeFee(from, value, transferFee);
+        if (s_areTradingFeesEnabled) {
+            if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
+                // Buy order
+                uint8 buyFee = s_buyFee;
+                if (buyFee >= 1) {
+                    value -= _takeFee(from, value, buyFee);
+                }
+            } else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
+                // Sell order
+                uint8 sellFee = s_sellFee;
+                if (sellFee >= 1) {
+                    value -= _takeFee(from, value, sellFee);
+                }
+            } else if (!s_isFeeExempt[from] && !s_isFeeExempt[to]) {
+                // Transfer
+                uint8 transferFee = s_buyFee + s_sellFee;
+                if (transferFee >= 1) {
+                    value -= _takeFee(from, value, transferFee);
+                }
             }
         }
 

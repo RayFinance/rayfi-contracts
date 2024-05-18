@@ -206,6 +206,14 @@ contract RayFiTest is Test {
         rayFi.getSharesBalanceOf(address(this));
     }
 
+    function testTradingFeesRemovalWorks() public feesSet {
+        vm.startPrank(msg.sender);
+        rayFi.removeTradingFees();
+        rayFi.transfer(address(this), TRANSFER_AMOUNT);
+
+        assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT);
+    }
+
     function testCanRetrieveERC20FromContract() public {
         rewardToken.mint(address(rayFi), TRANSFER_AMOUNT);
 
