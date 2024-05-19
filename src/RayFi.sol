@@ -914,20 +914,21 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
 
     /**
      * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
+* @custom:auditor check whether loading the shareholder array in memory is sustainable
      * @param gasForRewards The amount of gas to use for processing rewards
      * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param rewardToken The address of the reward token
      * @param isStateful Whether to save the state of the distribution
      */
     function _processRewards(
-        uint32 gasForRewards,
-        uint256 magnifiedRewardPerShare,
+                uint256 magnifiedRewardPerShare,
         address rewardToken,
         uint96 snapshotId,
         bool isStateful,
         uint32 gasForRewards
     ) private returns (bool isComplete) {
-        uint256 shareholderCount = s_shareholders.length();
+        address[] memory shareholders = s_shareholders.keys();
+        // uint256 shareholderCount = shareholders.length;
         uint256 earnedRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
@@ -938,16 +939,14 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             uint256 lastProcessedIndex = s_lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
-                (address user,) = s_shareholders.at(lastProcessedIndex);
+                // (address user,) = s_shareholders.at(lastProcessedIndex);
+address user = shareholders[lastProcessedIndex];
                 earnedRewards += _processRewardOfUser(
-                    user,
-                    magnifiedRewardPerShare,
-                    s_balancesSnapshots[user].upperLookupRecent(s_snapshotId - 1),
-                    rewardToken
+                    user, magnifiedRewardPerShare, s_balancesSnapshots[user].upperLookupRecent(snapshotId), rewardToken
                 );
 
                 ++lastProcessedIndex;
-                if (lastProcessedIndex >= shareholderCount) {
+                if (lastProcessedIndex >= shareholders.length) {
                     lastProcessedIndex = 0;
                     isComplete = true;
                     break;
@@ -957,8 +956,9 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             }
             s_lastProcessedIndex = lastProcessedIndex;
         } else {
-            for (uint256 i; i < shareholderCount; ++i) {
-                (address user,) = s_shareholders.at(i);
+            for (uint256 i; i < shareholders.length; ++i) {
+                // (address user,) = s_shareholders.at(i);
+address user = shareholders[i];
                 earnedRewards += _processRewardOfUser(user, magnifiedRewardPerShare, balanceOf(user), rewardToken);
             }
             isComplete = true;
@@ -1021,10 +1021,11 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             }
 
             uint256 vaultTokensToDistribute;
-            if (vaultToken != address(this)) {
-                vaultTokensToDistribute = ERC20(vaultToken).balanceOf(address(this));
-            } else {
+            bool isVaultTokenRayFi = vaultToken == address(this);
+            if (isVaultTokenRayFi) {
                 vaultTokensToDistribute = balanceOf(swapReceiver);
+} else {
+                vaultTokensToDistribute = ERC20(vaultToken).balanceOf(address(this));
             }
 
             uint256 magnifiedVaultRewardsPerShare;
@@ -1040,7 +1041,8 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                     _calculateRewardPerShare(vaultTokensToDistribute, totalStakedAmountInVault);
             }
 
-            if (_processVault(gasForRewards, magnifiedVaultRewardsPerShare, vaultToken, isStateful)) {
+            if (_processVault(gasForRewards, magnifiedVaultRewardsPerShare, vaultToken, isVaultTokenRayFi, isStateful))
+            {
                 vault.magnifiedRewardPerShare = 0;
                 vault.state = VaultState.ResetPending;
                 continue;
@@ -1059,6 +1061,7 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
 
     /**
      * @dev Low-level function to process rewards a specific vault in either stateful or stateless mode
+* @custom:auditor check whether loading the shareholder array in memory is sustainable
      * @param gasForRewards The amount of gas to use for processing rewards
      * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
      * @param vaultToken The address of the vault token
@@ -1068,10 +1071,12 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         uint32 gasForRewards,
         uint256 magnifiedVaultRewardsPerShare,
         address vaultToken,
+bool isVaultTokenRayFi,
         bool isStateful
     ) private returns (bool isComplete) {
         Vault storage vault = s_vaults[vaultToken];
-        uint256 shareholderCount = vault.stakers.length();
+        address[] memory shareholders = vault.stakers.keys();
+        // uint256 shareholderCount = shareholders.length;
         uint256 vaultRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
@@ -1082,11 +1087,13 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             uint256 lastProcessedIndex = vault.lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
-                (address user,) = vault.stakers.at(lastProcessedIndex);
-                vaultRewards += _processVaultOfUser(user, magnifiedVaultRewardsPerShare, vaultToken, vault);
+                // (address user,) = vault.stakers.at(lastProcessedIndex);
+                address user = shareholders[lastProcessedIndex];
+                vaultRewards +=
+                    _processVaultOfUser(user, magnifiedVaultRewardsPerShare, vaultToken, isVaultTokenRayFi, vault);
 
                 ++lastProcessedIndex;
-                if (lastProcessedIndex >= shareholderCount) {
+                if (lastProcessedIndex >= shareholders.length) {
                     lastProcessedIndex = 0;
                     isComplete = true;
                     break;
@@ -1096,14 +1103,16 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             }
             vault.lastProcessedIndex = lastProcessedIndex;
         } else {
-            for (uint256 i; i < shareholderCount; ++i) {
-                (address user,) = vault.stakers.at(i);
-                vaultRewards += _processVaultOfUser(user, magnifiedVaultRewardsPerShare, vaultToken, vault);
+            for (uint256 i; i < shareholders.length; ++i) {
+                // (address user,) = vault.stakers.at(i);
+                address user = shareholders[i];
+                vaultRewards +=
+                    _processVaultOfUser(user, magnifiedVaultRewardsPerShare, vaultToken, isVaultTokenRayFi, vault);
             }
             isComplete = true;
         }
 
-        if (vaultToken == address(this)) {
+        if (isVaultTokenRayFi) {
             super._update(s_swapReceiver, address(this), vaultRewards);
             vault.totalVaultShares += vaultRewards;
             s_totalStakedShares += vaultRewards;
@@ -1147,18 +1156,19 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         address user,
         uint256 magnifiedVaultRewardsPerShare,
         address vaultToken,
+bool isVaultTokenRayFi,
         Vault storage vault
     ) private returns (uint256 vaultReward) {
         uint256 vaultBalanceOfUser = vault.stakers.get(user);
         vaultReward = _calculateReward(magnifiedVaultRewardsPerShare, vaultBalanceOfUser);
         if (vaultReward >= 1) {
-            if (vaultToken != address(this)) {
-                ERC20(vaultToken).transfer(user, vaultReward);
-            } else {
+            if (isVaultTokenRayFi) {
                 unchecked {
                     vault.stakers.set(user, vaultBalanceOfUser + vaultReward);
                     s_stakedBalances[user] += vaultReward;
                 }
+} else {
+                ERC20(vaultToken).transfer(user, vaultReward);
             }
         }
     }
