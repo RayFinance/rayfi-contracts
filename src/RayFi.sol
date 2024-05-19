@@ -11,8 +11,10 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 /**
  * @title RayFi
  * @author 0xC4LL3
- * @notice This contract is the underlying token of the Ray Finance ecosystem.
- * @notice The primary purpose of this token is acquiring (or selling) shares of the Ray Finance protocol.
+ * @notice This contract is the core and the underlying token of the Ray Finance ecosystem.
+ * @notice The primary purpose of the RayFi token is acquiring (or selling) shares of the Ray Finance protocol.
+ * Acquiring sufficient shares enables users to automatically earn rewards in the form of stablecoin airdrops.
+ * Additionally, users may stake their RayFi tokens in lockless vaults to reinvest their rewards in other tokens.
  */
 contract RayFi is ERC20, Ownable {
     //////////////
@@ -22,18 +24,42 @@ contract RayFi is ERC20, Ownable {
     using EnumerableMap for EnumerableMap.AddressToUintMap;
     using Checkpoints for Checkpoints.Trace160;
 
+    /**
+     * @title The state of the distribution process
+     * @dev The state of of the distribution is only tracked in stateful mode
+     * @dev The purpose of this enum is to correctly resume unfinished distributions
+     * @param Inactive There is no stateful distribution in progress
+     * @param ProcessingVaults The distribution is processing vaults, which implies reinvestment already happened
+     * @param ProcessingRewards The distribution is processing rewards, which implies vaults have been processed
+     */
     enum DistributionState {
         Inactive,
         ProcessingVaults,
         ProcessingRewards
     }
 
+    /**
+     * @title The state of a staking vault
+     * @dev The state of a vault is used in stateful distributions for the same purpose of the `DistributionState`
+     * @param Ready The vault is ready to be processed
+     * @param Processing The vault is being processed, meaning its distribution parameters should not be modified
+     * @param ResetPending The vault has finished processing and is waiting to be reset after all vaults are done
+     */
     enum VaultState {
         Ready,
         Processing,
         ResetPending
     }
 
+    /**
+     * @title A data structure cointaining all data for a staking vault
+     * @param vaultId The id of the vault
+     * @param totalVaultShares The total amount of RayFi staked in the vault
+     * @param magnifiedRewardPerShare The magnified reward per share for the vault
+     * @param lastProcessedIndex The last index processed for the vault, tracked in stateful distributions
+     * @param stakers The list of stakers in the vault
+     * @param state The state of the vault, see `VaultState` documentation
+     */
     struct Vault {
         uint256 vaultId;
         uint256 totalVaultShares;
