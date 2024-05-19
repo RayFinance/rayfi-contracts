@@ -960,7 +960,7 @@ contract RayFi is ERC20, Ownable {
         path[0] = tokenIn;
         path[1] = tokenOut;
         uint256 amountOutMin = router.getAmountsOut(amountIn, path)[1];
-        if (slippage >= 1) {
+        if (slippage > 0) {
             amountOutMin = amountOutMin * (100 - slippage) / 100;
         }
         router.swapExactTokensForTokens(amountIn, amountOutMin, path, to, block.timestamp);
@@ -968,11 +968,12 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
-     * @custom:auditor check whether loading the shareholder array in memory is sustainable
-     * @param gasForRewards The amount of gas to use for processing rewards
+     * @custom:auditor To check whether loading the shareholder array in memory is sustainable
      * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param rewardToken The address of the reward token
+     * @param snapshotId The id of the snapshot to use
      * @param isStateful Whether to save the state of the distribution
+     * @param gasForRewards The amount of gas to use for processing rewards
      */
     function _processRewards(
         uint256 magnifiedRewardPerShare,
@@ -1023,8 +1024,7 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Low-level function to process the given vaults
-     * Mainly exists to clean up the high-level `distributeRewards` function and void stack-too-deep errors
-     * We do all swaps first to make it easier to resume the distribution in case it is stateful
+     * Mainly exists to clean up the high-level `distributeRewards` function and avoid "stack too deep" errors
      * @param vaultTokens The list of vaults to distribute rewards to
      * @param gasForRewards The amount of gas to use for processing rewards, ignored in stateless mode
      * @param isStateful Whether to save the state of the distribution
@@ -1040,7 +1040,7 @@ contract RayFi is ERC20, Ownable {
             Vault storage vault = s_vaults[vaultToken];
             uint256 totalStakedAmountInVault = vault.totalVaultShares;
             VaultState startingVaultState = vault.state;
-            if (totalStakedAmountInVault <= 0 || startingVaultState == VaultState.ResetPending) {
+            if (totalStakedAmountInVault == 0 || startingVaultState == VaultState.ResetPending) {
                 continue;
             }
 
@@ -1065,7 +1065,7 @@ contract RayFi is ERC20, Ownable {
                     _calculateRewardPerShare(vaultTokensToDistribute, totalStakedAmountInVault);
             }
 
-            if (_processVault(gasForRewards, magnifiedVaultRewardsPerShare, vaultToken, isVaultTokenRayFi, isStateful))
+            if (_processVault(magnifiedVaultRewardsPerShare, vaultToken, gasForRewards, isVaultTokenRayFi, isStateful))
             {
                 vault.magnifiedRewardPerShare = 0;
                 vault.state = VaultState.ResetPending;
@@ -1084,17 +1084,18 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to process rewards a specific vault in either stateful or stateless mode
-     * @custom:auditor check whether loading the shareholder array in memory is sustainable
-     * @param gasForRewards The amount of gas to use for processing rewards
+     * @dev Low-level function to process rewards for a specific vault in either stateful or stateless mode
+     * @custom:auditor To check whether loading the shareholder array in memory is sustainable
      * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
      * @param vaultToken The address of the vault token
+     * @param gasForRewards The amount of gas to use for processing rewards
+     * @param isVaultTokenRayFi Whether the vault token is RayFi
      * @param isStateful Whether to save the state of the distribution
      */
     function _processVault(
-        uint32 gasForRewards,
         uint256 magnifiedVaultRewardsPerShare,
         address vaultToken,
+        uint32 gasForRewards,
         bool isVaultTokenRayFi,
         bool isStateful
     ) private returns (bool isComplete) {
@@ -1155,6 +1156,7 @@ contract RayFi is ERC20, Ownable {
      * @notice Processes rewards for a specific token holder
      * @param user The address of the token holder
      * @param magnifiedRewardPerShare The magnified reward amount per share
+     * @param balance The balance of the token holder
      * @param rewardToken The address of the reward token
      * @return earnedReward The amount of rewards withdrawn
      */
@@ -1163,7 +1165,7 @@ contract RayFi is ERC20, Ownable {
         returns (uint256 earnedReward)
     {
         earnedReward = _calculateReward(magnifiedRewardPerShare, balance);
-        if (earnedReward >= 1) {
+        if (earnedReward > 0) {
             ERC20(rewardToken).transfer(user, earnedReward);
         }
     }
@@ -1173,6 +1175,7 @@ contract RayFi is ERC20, Ownable {
      * @param user The address of the token holder
      * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
      * @param vaultToken The address of the vault token
+     * @param isVaultTokenRayFi Whether the vault token is RayFi
      * @param vault The storage pointer to the vault
      * @return vaultReward The amount of rewards withdrawn
      */
@@ -1185,7 +1188,7 @@ contract RayFi is ERC20, Ownable {
     ) private returns (uint256 vaultReward) {
         uint256 vaultBalanceOfUser = vault.stakers.get(user);
         vaultReward = _calculateReward(magnifiedVaultRewardsPerShare, vaultBalanceOfUser);
-        if (vaultReward >= 1) {
+        if (vaultReward > 0) {
             if (isVaultTokenRayFi) {
                 unchecked {
                     vault.stakers.set(user, vaultBalanceOfUser + vaultReward);
