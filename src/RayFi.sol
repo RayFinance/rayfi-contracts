@@ -322,8 +322,7 @@ contract RayFi is ERC20, Ownable {
         }
 
         super._update(msg.sender, address(this), value);
-        _stake(vault, msg.sender, value);
-        _updateShareholder(msg.sender, s_balancesSnapshots[msg.sender], uint160(value), s_snapshotId, _sub);
+        _stake(vault, msg.sender, uint160(value));
     }
 
     /**
@@ -339,9 +338,8 @@ contract RayFi is ERC20, Ownable {
             revert RayFi__DistributionInProgress();
         }
 
-        _unstake(vault, msg.sender, value);
+        _unstake(vault, msg.sender, uint160(value));
         super._update(address(this), msg.sender, value);
-        _updateShareholder(msg.sender, s_balancesSnapshots[msg.sender], uint160(value), s_snapshotId, _add);
     }
 
     /**
@@ -819,7 +817,7 @@ contract RayFi is ERC20, Ownable {
             if (stakedBalance >= 1) {
                 for (uint256 i; i < s_vaultTokens.length; ++i) {
                     address vaultToken = s_vaultTokens[i];
-                    _unstake(vaultToken, shareholder, s_vaults[vaultToken].stakers.get(shareholder));
+                    _unstake(vaultToken, shareholder, uint160(s_vaults[vaultToken].stakers.get(shareholder)));
                 }
                 super._update(address(this), shareholder, stakedBalance);
             }
@@ -834,7 +832,7 @@ contract RayFi is ERC20, Ownable {
      * @param user The address of the user to stake the RayFi tokens for
      * @param value The amount of RayFi tokens to stake
      */
-    function _stake(address vaultToken, address user, uint256 value) private {
+    function _stake(address vaultToken, address user, uint160 value) private {
         Vault storage vault = s_vaults[vaultToken];
         (, uint256 userBalance) = vault.stakers.tryGet(user);
         vault.stakers.set(user, userBalance + value);
@@ -842,7 +840,10 @@ contract RayFi is ERC20, Ownable {
 
         s_stakedBalances[user] += value;
         s_totalStakedShares += value;
-        s_totalStakedSharesSnapshots.push(s_snapshotId, _add(s_totalStakedSharesSnapshots.latest(), uint160(value)));
+        s_totalStakedSharesSnapshots.push(s_snapshotId, s_totalStakedSharesSnapshots.latest() + value);
+
+        Checkpoints.Trace160 storage balanceSnapshot = s_balancesSnapshots[user];
+        balanceSnapshot.push(s_snapshotId, balanceSnapshot.latest() - value);
 
         emit RayFiStaked(user, value, s_totalStakedShares);
     }
@@ -852,7 +853,7 @@ contract RayFi is ERC20, Ownable {
      * @param user The address of the user to unstake the RayFi tokens for
      * @param value The amount of RayFi tokens to unstake
      */
-    function _unstake(address vaultToken, address user, uint256 value) private {
+    function _unstake(address vaultToken, address user, uint160 value) private {
         Vault storage vault = s_vaults[vaultToken];
         uint256 userBalance = vault.stakers.get(user);
         uint256 remainingBalance = userBalance - value;
@@ -865,7 +866,10 @@ contract RayFi is ERC20, Ownable {
 
         s_stakedBalances[user] -= value;
         s_totalStakedShares -= value;
-        s_totalStakedSharesSnapshots.push(s_snapshotId, _sub(s_totalStakedSharesSnapshots.latest(), uint160(value)));
+        s_totalStakedSharesSnapshots.push(s_snapshotId, s_totalStakedSharesSnapshots.latest() - value);
+
+        Checkpoints.Trace160 storage balanceSnapshot = s_balancesSnapshots[user];
+        balanceSnapshot.push(s_snapshotId, balanceSnapshot.latest() + value);
 
         emit RayFiUnstaked(user, value, s_totalStakedShares);
     }
