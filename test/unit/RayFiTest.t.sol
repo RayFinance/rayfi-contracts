@@ -478,18 +478,41 @@ contract RayFiTest is Test {
         rayFi.addVault(address(0));
     }
 
-    function testVaultsCanBeRemoved() public {
+    function testVaultsCanBeRemoved() public fundUserBase fullyStakeUserBase {
+        uint256[USER_COUNT] memory stakedBalancesBefore;
+        for (uint256 i; i < USER_COUNT; ++i) {
+            stakedBalancesBefore[i] = rayFi.getStakedBalanceOf(users[i]);
+        }
+
         vm.startPrank(msg.sender);
+        rayFi.addVault(address(this));
         rayFi.removeVault(address(rayFi));
 
         vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__VaultDoesNotExist.selector, address(rayFi)));
         rayFi.stake(address(rayFi), TRANSFER_AMOUNT);
+
+        for (uint256 i; i < USER_COUNT; ++i) {
+            assertEq(rayFi.getStakedBalanceOf(users[i]), 0);
+            assertEq(rayFi.balanceOf(users[i]), stakedBalancesBefore[i]);
+        }
     }
 
     function testCannotRemoveInexistentVaults() public {
         vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__VaultDoesNotExist.selector, address(0)));
         vm.prank(msg.sender);
         rayFi.removeVault(address(0));
+    }
+
+    function testCannotAddOrRemoveVaultsDuringDistributions() public fundUserBase {
+        rewardToken.mint(address(rayFi), TRANSFER_AMOUNT);
+        vm.startPrank(msg.sender);
+        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0));
+
+        vm.expectRevert(RayFi.RayFi__DistributionInProgress.selector);
+        rayFi.addVault(address(this));
+
+        vm.expectRevert(RayFi.RayFi__DistributionInProgress.selector);
+        rayFi.removeVault(address(rayFi));
     }
 
     ////////////////////
