@@ -554,9 +554,9 @@ contract RayFi is ERC20, Ownable {
     function setIsExcludedFromRewards(address user, bool isExcluded) external onlyOwner {
         s_isExcludedFromRewards[user] = isExcluded;
         if (isExcluded) {
-            _removeShareholder(user, s_balancesSnapshots[user], s_snapshotId);
+            _removeShareholder(user, s_snapshotId);
         } else {
-            _updateShareholder(user, s_balancesSnapshots[user], uint160(balanceOf(user)), s_snapshotId, _add);
+            _updateShareholder(user, s_snapshotId);
         }
         emit IsUserExcludedFromRewardsUpdated(user, isExcluded);
     }
@@ -748,10 +748,9 @@ contract RayFi is ERC20, Ownable {
 
         super._update(from, to, value);
 
-        uint160 delta = uint160(value);
         uint96 snapshotId = s_snapshotId;
-        _updateShareholder(from, s_balancesSnapshots[from], delta, snapshotId, _sub);
-        _updateShareholder(to, s_balancesSnapshots[to], delta, snapshotId, _add);
+        _updateShareholder(from, snapshotId);
+        _updateShareholder(to, snapshotId);
     }
 
     /**
@@ -771,35 +770,23 @@ contract RayFi is ERC20, Ownable {
      * @dev Updates the shareholder list based on the new balance
      * @param shareholder The address of the shareholder
      */
-    function _updateShareholder(
-        address shareholder,
-        Checkpoints.Trace160 storage balanceSnapshot,
-        uint160 delta,
-        uint96 snapshotId,
-        function(uint160, uint160) pure returns(uint160) operation
-    ) private {
+    function _updateShareholder(address shareholder, uint96 snapshotId) private {
         uint256 newBalance = balanceOf(shareholder);
         uint256 totalBalance = newBalance + s_stakedBalances[shareholder];
         if (totalBalance >= s_minimumTokenBalanceForRewards && !s_isExcludedFromRewards[shareholder]) {
-            balanceSnapshot.push(snapshotId, operation(balanceSnapshot.latest(), delta));
             (bool success, uint256 oldBalance) = s_shareholders.tryGet(shareholder);
             if (!success) {
                 s_totalRewardShares += totalBalance;
-                s_totalRewardSharesSnapshots.push(
-                    snapshotId, _add(s_totalRewardSharesSnapshots.latest(), uint160(totalBalance))
-                );
             } else if (totalBalance >= oldBalance) {
-                delta = uint160(totalBalance - oldBalance);
-                s_totalRewardShares += delta;
-                s_totalRewardSharesSnapshots.push(snapshotId, _add(s_totalRewardSharesSnapshots.latest(), delta));
+                s_totalRewardShares += totalBalance - oldBalance;
             } else {
-                delta = uint160(oldBalance - totalBalance);
-                s_totalRewardShares -= delta;
-                s_totalRewardSharesSnapshots.push(snapshotId, _sub(s_totalRewardSharesSnapshots.latest(), delta));
+                s_totalRewardShares -= oldBalance - totalBalance;
             }
             s_shareholders.set(shareholder, totalBalance);
+            s_balancesSnapshots[shareholder].push(snapshotId, uint160(newBalance));
+            s_totalRewardSharesSnapshots.push(snapshotId, uint160(s_totalRewardShares));
         } else {
-            _removeShareholder(shareholder, balanceSnapshot, snapshotId);
+            _removeShareholder(shareholder, snapshotId);
         }
     }
 
@@ -807,9 +794,7 @@ contract RayFi is ERC20, Ownable {
      * @dev Removes a shareholder from the list and retrieves their staked tokens
      * @param shareholder The address of the shareholder
      */
-    function _removeShareholder(address shareholder, Checkpoints.Trace160 storage balanceSnapshot, uint96 snapshotId)
-        private
-    {
+    function _removeShareholder(address shareholder, uint96 snapshotId) private {
         if (s_shareholders.contains(shareholder)) {
             s_totalRewardShares -= s_shareholders.get(shareholder);
             s_shareholders.remove(shareholder);
@@ -821,7 +806,7 @@ contract RayFi is ERC20, Ownable {
                 }
                 super._update(address(this), shareholder, stakedBalance);
             }
-            balanceSnapshot.push(snapshotId, 0);
+            s_balancesSnapshots[shareholder].push(snapshotId, 0);
             s_totalRewardSharesSnapshots.push(snapshotId, uint160(s_totalRewardShares));
         }
     }
@@ -1112,8 +1097,8 @@ contract RayFi is ERC20, Ownable {
 
             uint160 delta = uint160(vaultRewards);
             uint96 snapshotId = s_snapshotId;
-            s_totalRewardSharesSnapshots.push(snapshotId, _add(s_totalRewardSharesSnapshots.latest(), delta));
-            s_totalStakedSharesSnapshots.push(snapshotId, _add(s_totalStakedSharesSnapshots.latest(), delta));
+            s_totalRewardSharesSnapshots.push(snapshotId, s_totalRewardSharesSnapshots.latest() + delta);
+            s_totalStakedSharesSnapshots.push(snapshotId, s_totalStakedSharesSnapshots.latest() + delta);
         }
 
         emit RewardsDistributed(0, vaultRewards);
@@ -1192,25 +1177,5 @@ contract RayFi is ERC20, Ownable {
      */
     function _calculateRewardPerShare(uint256 totalRewards, uint256 totalShares) private pure returns (uint256) {
         return totalRewards * MAGNITUDE / totalShares;
-    }
-
-    /**
-     * @dev Low-level function to add two numbers used as a function argument for updating balance snapshots
-     * @param a The first number
-     * @param b The second number
-     * @return The sum of the two numbers
-     */
-    function _add(uint160 a, uint160 b) private pure returns (uint160) {
-        return a + b;
-    }
-
-    /**
-     * @dev Low-level function to subtract two numbers used as a function argument for updating balance snapshots
-     * @param a The first number
-     * @param b The second number
-     * @return The difference of the two numbers
-     */
-    function _sub(uint160 a, uint160 b) private pure returns (uint160) {
-        return a - b;
     }
 }
