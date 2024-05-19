@@ -13,7 +13,7 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
  * @author 0xC4LL3
  * @notice This contract is the core and the underlying token of the Ray Finance ecosystem.
  * @notice The primary purpose of the RayFi token is acquiring (or selling) shares of the Ray Finance protocol.
- * Acquiring sufficient shares enables users to automatically earn rewards in the form of stablecoin airdrops.
+ * Acquiring sufficient shares enables users to automagically earn rewards in the form of stablecoin airdrops.
  * Additionally, users may stake their RayFi tokens in lockless vaults to reinvest their rewards in other tokens.
  */
 contract RayFi is ERC20, Ownable {
@@ -131,6 +131,13 @@ contract RayFi is ERC20, Ownable {
     event RayFiUnstaked(address indexed unstaker, uint256 indexed unstakedAmount, uint256 indexed totalStakedShares);
 
     /**
+     * @notice Emitted when rewards are distributed
+     * @param totalRewardsWithdrawn The amount of rewards that were airdropped to users
+     * @param totalRayFiStaked The amount of RayFi that was staked after reinvesting rewards
+     */
+    event RewardsDistributed(uint256 indexed totalRewardsWithdrawn, uint256 indexed totalRayFiStaked);
+
+    /**
      * @notice Emitted when a snapshot is taken
      * @param snapshotId The id of the snapshot
      */
@@ -199,27 +206,6 @@ contract RayFi is ERC20, Ownable {
      */
     event IsUserExcludedFromRewardsUpdated(address indexed user, bool indexed isExcluded);
 
-    /**
-     * @notice Emitted when rewards are distributed
-     * @param totalRewardsWithdrawn The amount of rewards that were airdropped to users
-     * @param totalRayFiStaked The amount of RayFi that was staked after reinvesting rewards
-     */
-    event RewardsDistributed(uint256 indexed totalRewardsWithdrawn, uint256 indexed totalRayFiStaked);
-
-    /**
-     * @notice Emitted when rewards are withdrawn
-     * @param user The user that withdrew the rewards
-     * @param amount The amount of rewards that were withdrawn
-     */
-    event RewardsWithdrawn(address indexed user, uint256 indexed amount);
-
-    /**
-     * @notice Emitted when rewards are reinvested
-     * @param user The user that reinvested the rewards
-     * @param amount The amount of RayFi that was compounded
-     */
-    event RewardsReinvested(address indexed user, uint256 indexed amount);
-
     //////////////////
     // Errors       //
     //////////////////
@@ -233,6 +219,19 @@ contract RayFi is ERC20, Ownable {
     error RayFi__CannotManuallySendRayFiToTheContract();
 
     /**
+     * @notice Indicates a failure in unstaking tokens due to the sender not having enough staked tokens
+     * @param stakedAmount The amount of staked tokens the sender has
+     * @param unstakeAmount The amount of tokens the sender is trying to unstake
+     */
+    error RayFi__InsufficientStakedBalance(uint256 stakedAmount, uint256 unstakeAmount);
+
+    /**
+     * @notice Indicates a failure in staking tokens due to not having enough tokens
+     * @param minimumTokenBalance The minimum amount of tokens required to stake
+     */
+    error RayFi__InsufficientTokensToStake(uint256 minimumTokenBalance);
+
+    /**
      * @dev Triggered when attempting to set the zero address as a contract parameter
      * Setting a contract parameter to the zero address can lead to unexpected behavior
      */
@@ -240,13 +239,13 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Triggered when trying to add a vault that already exists
-     * @param vaultToken The address of the vault that already exists
+     * @param vaultToken The address that was passed as input
      */
     error RayFi__VaultAlreadyExists(address vaultToken);
 
     /**
      * @dev Triggered when trying to interact with a vault that does not exist
-     * @param vaultToken The address of the vault that does not exist
+     * @param vaultToken The address that was passed as input
      */
     error RayFi__VaultDoesNotExist(address vaultToken);
 
@@ -263,19 +262,6 @@ contract RayFi is ERC20, Ownable {
     error RayFi__FeesTooHigh(uint256 totalFees);
 
     /**
-     * @dev Indicates a failure in unstaking tokens due to the sender not having enough staked tokens
-     * @param stakedAmount The amount of staked tokens the sender has
-     * @param unstakeAmount The amount of tokens the sender is trying to unstake
-     */
-    error RayFi__InsufficientStakedBalance(uint256 stakedAmount, uint256 unstakeAmount);
-
-    /**
-     * @notice Indicates a failure in staking tokens due to not having enough tokens
-     * @param minimumTokenBalance The minimum amount of tokens required to stake
-     */
-    error RayFi__InsufficientTokensToStake(uint256 minimumTokenBalance);
-
-    /**
      * @dev Triggered when trying to process rewards, but not enough gas was sent with the transaction
      * @param gasRequested The amount of gas requested
      * @param gasProvided The amount of gas provided
@@ -286,11 +272,6 @@ contract RayFi is ERC20, Ownable {
      * @dev Triggered when trying to alter the state of the distribution while it is already in progress
      */
     error RayFi__DistributionInProgress();
-
-    /**
-     * @dev Triggered when a swap fails
-     */
-    error RayFi__SwapFailed();
 
     ////////////////////
     // Constructor    //
