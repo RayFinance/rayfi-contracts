@@ -356,8 +356,8 @@ contract RayFi is ERC20, Ownable {
     /**
      * @notice High-level function to start the reward distribution process in stateless mode
      * The stateless mode is always the preferred one, as it is drastically more gas-efficient
-     * Rewards are either sent to users as stablecoins or reinvested into RayFi for users who have staked their tokens
-     * @param maxSwapSlippage The maximum acceptable percentage slippage for the swaps
+     * Rewards are either sent to users as stablecoins or reinvested for users who have staked their tokens in vaults
+     * @param maxSwapSlippage The maximum acceptable percentage slippage for the reinvestment swaps
      */
     function distributeRewardsStateless(uint8 maxSwapSlippage) external onlyOwner {
         if (s_distributionState != DistributionState.Inactive) {
@@ -368,32 +368,32 @@ contract RayFi is ERC20, Ownable {
         uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         uint256 totalRewardShares = s_totalRewardShares;
         uint256 totalStakedShares = s_totalStakedShares;
-        if (totalStakedShares >= 1) {
+        if (totalStakedShares == 0) {
+            uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
+            _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
+        } else {
             address[] memory vaultTokens = s_vaultTokens;
             uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
             _reinvestRewards(rewardToken, totalRewardsToReinvest, totalStakedShares, vaultTokens, maxSwapSlippage);
             _processVaults(vaultTokens, 0, false);
 
             uint256 totalNonStakedAmount = totalRewardShares - totalStakedShares;
-            if (totalNonStakedAmount >= 1) {
+            if (totalNonStakedAmount > 0) {
                 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
                 _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
             }
-        } else {
-            uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
-            _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
         }
     }
 
     /**
      * @notice High-level function to start the reward distribution process in stateful mode
      * The stateful mode is a backup to use only in case the stateless mode is unable to complete the distribution
-     * Rewards are either sent to users as stablecoins or reinvested into RayFi for users who have staked their tokens
+     * Rewards are either sent to users as stablecoins or reinvested for users who have staked their tokens in vaults
      * @param gasForRewards The amount of gas to use for processing rewards
      * This is a safety mechanism to prevent the contract from running out of gas at an inconvenient time
      * `gasForRewards` should be set to a value that is less than the gas limit of the transaction
-     * @param maxSwapSlippage The maximum acceptable percentage slippage for the swaps
+     * @param maxSwapSlippage The maximum acceptable percentage slippage for the reinvestment swaps
      * @param vaultTokens The list of vaults to distribute rewards to, can be left empty to distribute to all vaults
      */
     function distributeRewardsStateful(uint32 gasForRewards, uint8 maxSwapSlippage, address[] memory vaultTokens)
@@ -412,8 +412,15 @@ contract RayFi is ERC20, Ownable {
         address rewardToken = s_rewardToken;
         uint256 totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
         uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
-        if (totalStakedShares >= 1) {
-            if (vaultTokens.length <= 0) {
+        if (totalStakedShares == 0) {
+            if (isDistributionInactive) {
+                uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
+                s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
+                s_distributionState = DistributionState.ProcessingRewards;
+            }
+            isComplete = _processRewards(s_magnifiedRewardPerShare, rewardToken, snapshotId, true, gasForRewards);
+        } else {
+            if (vaultTokens.length == 0) {
                 vaultTokens = s_vaultTokens;
             }
 
@@ -433,7 +440,7 @@ contract RayFi is ERC20, Ownable {
             }
 
             uint256 totalNonStakedAmount = totalRewardShares - totalStakedShares;
-            if (totalNonStakedAmount >= 1) {
+            if (totalNonStakedAmount > 0) {
                 if (s_distributionState != DistributionState.ProcessingRewards) {
                     uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                     s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
@@ -441,13 +448,6 @@ contract RayFi is ERC20, Ownable {
                 }
                 isComplete = _processRewards(s_magnifiedRewardPerShare, rewardToken, snapshotId, true, gasForRewards);
             }
-        } else {
-            if (isDistributionInactive) {
-                uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
-                s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
-                s_distributionState = DistributionState.ProcessingRewards;
-            }
-            isComplete = _processRewards(s_magnifiedRewardPerShare, rewardToken, snapshotId, true, gasForRewards);
         }
 
         if (isComplete) {
