@@ -1,3 +1,15 @@
+//  /$$$$$$$                            /$$$$$$$$ /$$
+// | $$__  $$                          | $$_____/|__/
+// | $$  \ $$  /$$$$$$  /$$   /$$      | $$       /$$ /$$$$$$$   /$$$$$$  /$$$$$$$   /$$$$$$$  /$$$$$$
+// | $$$$$$$/ |____  $$| $$  | $$      | $$$$$   | $$| $$__  $$ |____  $$| $$__  $$ /$$_____/ /$$__  $$
+// | $$__  $$  /$$$$$$$| $$  | $$      | $$__/   | $$| $$  \ $$  /$$$$$$$| $$  \ $$| $$      | $$$$$$$$
+// | $$  \ $$ /$$__  $$| $$  | $$      | $$      | $$| $$  | $$ /$$__  $$| $$  | $$| $$      | $$_____/
+// | $$  | $$|  $$$$$$$|  $$$$$$$      | $$      | $$| $$  | $$|  $$$$$$$| $$  | $$|  $$$$$$$|  $$$$$$$
+// |__/  |__/ \_______/ \____  $$      |__/      |__/|__/  |__/ \_______/|__/  |__/ \_______/ \_______/
+//                      /$$  | $$
+//                     |  $$$$$$/
+//                      \______/
+
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.20;
@@ -11,10 +23,11 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 /**
  * @title RayFi
  * @author 0xC4LL3
- * @notice This contract is the core and the underlying token of the Ray Finance ecosystem.
- * @notice The primary purpose of the RayFi token is acquiring (or selling) shares of the Ray Finance protocol.
- * Acquiring sufficient shares enables users to automagically earn rewards in the form of stablecoin airdrops.
- * Additionally, users may stake their RayFi tokens in lockless vaults to reinvest their rewards in other tokens.
+ * @notice This contract is the core and the underlying token of the Ray Finance ecosystem
+ * It is responsible for tracking staked RayFi tokens, distributing rewards and reinvesting them in vaults
+ * @notice The primary purpose of the RayFi token is owning (or trading) shares of the Ray Finance protocol
+ * Acquiring sufficient shares enables users to automagically earn rewards in the form of stablecoin airdrops
+ * Users may stake their RayFi tokens in lockless vaults to have their rewards reinvested in RayFi or other tokens
  */
 contract RayFi is ERC20, Ownable {
     //////////////
