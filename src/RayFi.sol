@@ -144,6 +144,11 @@ contract RayFi is ERC20, Ownable {
     event SnapshotTaken(uint96 indexed snapshotId);
 
     /**
+     * @notice Emitted when trading fees are permanently removed using `removeTradingFees`
+     */
+    event TradingFeesRemoved();
+
+    /**
      * @notice Emitted when the fee amounts for buys and sells are updated
      * @param buyFee The new buy fee
      * @param sellFee The new sell fee
@@ -539,16 +544,17 @@ contract RayFi is ERC20, Ownable {
      */
     function removeTradingFees() external onlyOwner {
         s_areTradingFeesEnabled = false;
+        emit TradingFeesRemoved();
     }
 
     /**
-     * @notice Updates the fee amounts for buys and sells while ensuring the total fees do not exceed maximum
+     * @notice Updates the fee amounts for buys and sells while ensuring the total fees do not exceed the maximum
      * @param buyFee The new buy fee
      * @param sellFee The new sell fee
      */
     function setFeeAmounts(uint8 buyFee, uint8 sellFee) external onlyOwner {
         uint8 totalFee = buyFee + sellFee;
-        if (totalFee >= MAX_FEES + 1) {
+        if (totalFee > MAX_FEES) {
             revert RayFi__FeesTooHigh(totalFee);
         }
 
@@ -604,7 +610,7 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @notice Sets the address of the token that will be distributed as rewards
+     * @notice Sets the address of the token that will be distributed as rewards by default
      * @param newRewardToken The address of the new reward token
      */
     function setRewardToken(address newRewardToken) external onlyOwner {
@@ -630,7 +636,7 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @notice Sets the address that will receive fees charged on transfers
+     * @notice Sets the address that will receive fees charged on trades
      * @param newFeeReceiver The address of the fee receiver
      */
     function setFeeReceiver(address newFeeReceiver) external onlyOwner {
@@ -643,7 +649,7 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @notice Sets the address of the wallet that will receive swapped rewards
+     * @notice Sets the address of the wallet that will temporarily receive RayFi tokens from reinvestment swaps
      * @param newSwapReceiver The address of the new swap receiver
      */
     function setSwapReceiver(address newSwapReceiver) external onlyOwner {
