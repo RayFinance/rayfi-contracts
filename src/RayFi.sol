@@ -349,7 +349,7 @@ contract RayFi is ERC20, Ownable {
      * The stateless mode is always the preferred one, as it is drastically more gas-efficient
      * Rewards are either sent to users as stablecoins or reinvested into RayFi for users who have staked their tokens
      * @param maxSwapSlippage The maximum acceptable percentage slippage for the swaps
-          */
+     */
     function distributeRewardsStateless(uint8 maxSwapSlippage) external onlyOwner {
         if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
@@ -362,9 +362,8 @@ contract RayFi is ERC20, Ownable {
         if (totalStakedShares >= 1) {
             address[] memory vaultTokens = s_vaultTokens;
             uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
-            _processVaults(
-                vaultTokens, rewardToken, totalRewardsToReinvest, totalStakedShares, maxSwapSlippage, 0, false
-            );
+            _reinvestRewards(rewardToken, totalRewardsToReinvest, totalStakedShares, vaultTokens, maxSwapSlippage);
+            _processVaults(vaultTokens, 0, false);
 
             uint256 totalNonStakedAmount = totalRewardShares - totalStakedShares;
             if (totalNonStakedAmount >= 1) {
@@ -397,35 +396,28 @@ contract RayFi is ERC20, Ownable {
         bool isDistributionInactive = s_distributionState == DistributionState.Inactive;
         if (isDistributionInactive) {
             snapshotId = _snapshot();
-            } else {
-                snapshotId = s_snapshotId - 1;
-            }
-        
+        } else {
+            snapshotId = s_snapshotId - 1;
+        }
+
         address rewardToken = s_rewardToken;
         uint256 totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
-            uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
-                if (totalStakedShares >= 1) {
+        uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
+        if (totalStakedShares >= 1) {
             if (vaultTokens.length <= 0) {
                 vaultTokens = s_vaultTokens;
             }
 
             uint256 totalRewardsToReinvest;
             if (isDistributionInactive) {
-uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
+                uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
+                _reinvestRewards(rewardToken, totalRewardsToReinvest, totalStakedShares, vaultTokens, maxSwapSlippage);
                 s_distributionState = DistributionState.ProcessingVaults;
             }
 
             if (s_distributionState == DistributionState.ProcessingVaults) {
-                isComplete = _processVaults(
-                    vaultTokens,
-                    rewardToken,
-                    totalRewardsToReinvest,
-                    totalStakedShares,
-                    maxSwapSlippage,
-                    gasForRewards,
-                    true
-                );
+                isComplete = _processVaults(vaultTokens, gasForRewards, true);
                 if (!isComplete) {
                     return false;
                 }
@@ -442,7 +434,7 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             }
         } else {
             if (isDistributionInactive) {
-uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
+                uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
                 s_distributionState = DistributionState.ProcessingRewards;
             }
@@ -883,6 +875,32 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         emit SnapshotTaken(currentSnapshot);
     }
 
+    function _reinvestRewards(
+        address rewardToken,
+        uint256 totalRewardsToReinvest,
+        uint256 totalStakedShares,
+        address[] memory vaultTokens,
+        uint8 slippage
+    ) private {
+        IUniswapV2Router02 router = s_router;
+        ERC20(rewardToken).approve(address(s_router), totalRewardsToReinvest);
+        address swapReceiver = s_swapReceiver;
+        for (uint256 i; i < vaultTokens.length; ++i) {
+            address vaultToken = vaultTokens[i];
+            uint256 totalStakedAmountInVault = s_vaults[vaultToken].totalVaultShares;
+            if (totalStakedAmountInVault <= 0) {
+                continue;
+            }
+
+            uint256 rewardsToReinvest = totalRewardsToReinvest * totalStakedAmountInVault / totalStakedShares;
+            if (vaultToken != address(this)) {
+                _swapRewards(router, rewardToken, vaultToken, address(this), rewardsToReinvest, slippage);
+            } else {
+                _swapRewards(router, rewardToken, vaultToken, swapReceiver, rewardsToReinvest, slippage);
+            }
+        }
+    }
+
     /**
      * @dev Low-level function to swap the reward token using a UniswapV2-compatible router
      * Assumes that the tokens have already been approved for spending
@@ -914,14 +932,14 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
 
     /**
      * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
-* @custom:auditor check whether loading the shareholder array in memory is sustainable
+     * @custom:auditor check whether loading the shareholder array in memory is sustainable
      * @param gasForRewards The amount of gas to use for processing rewards
      * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param rewardToken The address of the reward token
      * @param isStateful Whether to save the state of the distribution
      */
     function _processRewards(
-                uint256 magnifiedRewardPerShare,
+        uint256 magnifiedRewardPerShare,
         address rewardToken,
         uint96 snapshotId,
         bool isStateful,
@@ -940,7 +958,7 @@ uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
                 // (address user,) = s_shareholders.at(lastProcessedIndex);
-address user = shareholders[lastProcessedIndex];
+                address user = shareholders[lastProcessedIndex];
                 earnedRewards += _processRewardOfUser(
                     user, magnifiedRewardPerShare, s_balancesSnapshots[user].upperLookupRecent(snapshotId), rewardToken
                 );
@@ -958,7 +976,7 @@ address user = shareholders[lastProcessedIndex];
         } else {
             for (uint256 i; i < shareholders.length; ++i) {
                 // (address user,) = s_shareholders.at(i);
-address user = shareholders[i];
+                address user = shareholders[i];
                 earnedRewards += _processRewardOfUser(user, magnifiedRewardPerShare, balanceOf(user), rewardToken);
             }
             isComplete = true;
@@ -972,45 +990,15 @@ address user = shareholders[i];
      * Mainly exists to clean up the high-level `distributeRewards` function and void stack-too-deep errors
      * We do all swaps first to make it easier to resume the distribution in case it is stateful
      * @param vaultTokens The list of vaults to distribute rewards to
-     * @param rewardToken The address of the reward token
-     * @param totalRewardsToReinvest The total amount of rewards to reinvest
-     * @param totalStakedShares The total amount of RayFi staked in the contract
-     * @param slippage The maximum acceptable percentage slippage for the swaps
-     * @param gasForRewards The amount of gas to use for processing rewards in stateful mode
+     * @param gasForRewards The amount of gas to use for processing rewards, ignored in stateless mode
      * @param isStateful Whether to save the state of the distribution
      * @return isComplete Whether the distribution is complete
      */
-    function _processVaults(
-        address[] memory vaultTokens,
-        address rewardToken,
-        uint256 totalRewardsToReinvest,
-        uint256 totalStakedShares,
-        uint8 slippage,
-        uint32 gasForRewards,
-        bool isStateful
-    ) private returns (bool isComplete) {
+    function _processVaults(address[] memory vaultTokens, uint32 gasForRewards, bool isStateful)
+        private
+        returns (bool isComplete)
+    {
         address swapReceiver = s_swapReceiver;
-
-        if (totalRewardsToReinvest >= 1) {
-            IUniswapV2Router02 router = s_router;
-            ERC20(rewardToken).approve(address(s_router), totalRewardsToReinvest);
-
-            for (uint256 i; i < vaultTokens.length; ++i) {
-                address vaultToken = vaultTokens[i];
-                uint256 totalStakedAmountInVault = s_vaults[vaultToken].totalVaultShares;
-                if (totalStakedAmountInVault <= 0) {
-                    continue;
-                }
-
-                uint256 rewardsToReinvest = totalRewardsToReinvest * totalStakedAmountInVault / totalStakedShares;
-                if (vaultToken != address(this)) {
-                    _swapRewards(router, rewardToken, vaultToken, address(this), rewardsToReinvest, slippage);
-                } else {
-                    _swapRewards(router, rewardToken, vaultToken, swapReceiver, rewardsToReinvest, slippage);
-                }
-            }
-        }
-
         for (uint256 i; i < vaultTokens.length; ++i) {
             address vaultToken = vaultTokens[i];
             Vault storage vault = s_vaults[vaultToken];
@@ -1024,7 +1012,7 @@ address user = shareholders[i];
             bool isVaultTokenRayFi = vaultToken == address(this);
             if (isVaultTokenRayFi) {
                 vaultTokensToDistribute = balanceOf(swapReceiver);
-} else {
+            } else {
                 vaultTokensToDistribute = ERC20(vaultToken).balanceOf(address(this));
             }
 
@@ -1061,7 +1049,7 @@ address user = shareholders[i];
 
     /**
      * @dev Low-level function to process rewards a specific vault in either stateful or stateless mode
-* @custom:auditor check whether loading the shareholder array in memory is sustainable
+     * @custom:auditor check whether loading the shareholder array in memory is sustainable
      * @param gasForRewards The amount of gas to use for processing rewards
      * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
      * @param vaultToken The address of the vault token
@@ -1071,7 +1059,7 @@ address user = shareholders[i];
         uint32 gasForRewards,
         uint256 magnifiedVaultRewardsPerShare,
         address vaultToken,
-bool isVaultTokenRayFi,
+        bool isVaultTokenRayFi,
         bool isStateful
     ) private returns (bool isComplete) {
         Vault storage vault = s_vaults[vaultToken];
@@ -1156,7 +1144,7 @@ bool isVaultTokenRayFi,
         address user,
         uint256 magnifiedVaultRewardsPerShare,
         address vaultToken,
-bool isVaultTokenRayFi,
+        bool isVaultTokenRayFi,
         Vault storage vault
     ) private returns (uint256 vaultReward) {
         uint256 vaultBalanceOfUser = vault.stakers.get(user);
@@ -1167,7 +1155,7 @@ bool isVaultTokenRayFi,
                     vault.stakers.set(user, vaultBalanceOfUser + vaultReward);
                     s_stakedBalances[user] += vaultReward;
                 }
-} else {
+            } else {
                 ERC20(vaultToken).transfer(user, vaultReward);
             }
         }
