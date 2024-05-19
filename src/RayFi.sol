@@ -262,11 +262,6 @@ contract RayFi is ERC20, Ownable {
     error RayFi__DistributionInProgress();
 
     /**
-     * @dev Triggered when trying to distribute rewards, but there are no rewards to distribute
-     */
-    error RayFi__NothingToDistribute();
-
-    /**
      * @dev Triggered when a swap fails
      */
     error RayFi__SwapFailed();
@@ -363,10 +358,6 @@ contract RayFi is ERC20, Ownable {
 
         address rewardToken = s_rewardToken;
         uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
-        if (totalUnclaimedRewards <= 0) {
-            revert RayFi__NothingToDistribute();
-        }
-
         uint256 totalRewardShares = s_totalRewardShares;
         uint256 totalStakedShares = s_totalStakedShares;
         if (totalStakedShares >= 1) {
@@ -383,11 +374,11 @@ contract RayFi is ERC20, Ownable {
             if (totalNonStakedAmount >= 1) {
                 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
-                _processRewards(0, magnifiedRewardPerShare, rewardToken, false);
+                _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
             }
         } else {
             uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
-            _processRewards(0, magnifiedRewardPerShare, rewardToken, false);
+            _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
         }
     }
 
@@ -406,32 +397,25 @@ contract RayFi is ERC20, Ownable {
         onlyOwner
         returns (bool isComplete)
     {
-        address rewardToken = s_rewardToken;
-        uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
+        uint96 snapshotId;
         bool isDistributionInactive = s_distributionState == DistributionState.Inactive;
         if (isDistributionInactive) {
-            if (totalUnclaimedRewards <= 0) {
-                revert RayFi__NothingToDistribute();
+            snapshotId = _snapshot();
             } else {
-                _snapshot();
+                snapshotId = s_snapshotId - 1;
             }
-        }
-
-        uint256 totalRewardShares;
-        uint256 totalStakedShares;
-        {
-            // Avoid stack too deep compile errors
-            uint96 snapshotId = s_snapshotId - 1;
-            totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
-            totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
-        }
-        if (totalStakedShares >= 1) {
+        
+        address rewardToken = s_rewardToken;
+        uint256 totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
+            uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
+                if (totalStakedShares >= 1) {
             if (vaultTokens.length <= 0) {
                 vaultTokens = s_vaultTokens;
             }
 
             uint256 totalRewardsToReinvest;
             if (isDistributionInactive) {
+uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
                 s_distributionState = DistributionState.ProcessingVaults;
             }
@@ -454,18 +438,19 @@ contract RayFi is ERC20, Ownable {
             uint256 totalNonStakedAmount = totalRewardShares - totalStakedShares;
             if (totalNonStakedAmount >= 1) {
                 if (s_distributionState != DistributionState.ProcessingRewards) {
-                    totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
+                    uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                     s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
                     s_distributionState = DistributionState.ProcessingRewards;
                 }
-                isComplete = _processRewards(gasForRewards, s_magnifiedRewardPerShare, rewardToken, true);
+                isComplete = _processRewards(s_magnifiedRewardPerShare, rewardToken, snapshotId, true, gasForRewards);
             }
         } else {
             if (isDistributionInactive) {
+uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
                 s_distributionState = DistributionState.ProcessingRewards;
             }
-            isComplete = _processRewards(gasForRewards, s_magnifiedRewardPerShare, rewardToken, true);
+            isComplete = _processRewards(s_magnifiedRewardPerShare, rewardToken, snapshotId, true, gasForRewards);
         }
 
         if (isComplete) {
@@ -942,7 +927,9 @@ contract RayFi is ERC20, Ownable {
         uint32 gasForRewards,
         uint256 magnifiedRewardPerShare,
         address rewardToken,
-        bool isStateful
+        uint96 snapshotId,
+        bool isStateful,
+        uint32 gasForRewards
     ) private returns (bool isComplete) {
         uint256 shareholderCount = s_shareholders.length();
         uint256 earnedRewards;

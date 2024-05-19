@@ -826,14 +826,6 @@ contract RayFiTest is Test {
         assert(rayFi.getStakedBalanceOf(msg.sender) >= TRANSFER_AMOUNT + amountOut - ACCEPTED_PRECISION_LOSS);
     }
 
-    function testDistributionRevertsOnZeroRewardBalance() public {
-        vm.startPrank(msg.sender);
-        vm.expectRevert(RayFi.RayFi__NothingToDistribute.selector);
-        rayFi.distributeRewardsStateless(0, new address[](0));
-        vm.expectRevert(RayFi.RayFi__NothingToDistribute.selector);
-        rayFi.distributeRewardsStateful(0, 0, new address[](0));
-    }
-
     function testOnlyOwnerCanStartDistribution() public {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
         rayFi.distributeRewardsStateless(0, new address[](0));
