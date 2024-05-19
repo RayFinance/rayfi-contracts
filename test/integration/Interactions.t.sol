@@ -173,7 +173,7 @@ contract InteractionsTest is Test {
         createRayFiUsers.createRayFiUsers(address(rayFi));
 
         vm.startPrank(msg.sender);
-        rayFi.distributeRewardsStateless(0, new address[](0));
+        rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
         address[] memory users = rayFi.getShareholders();
@@ -204,7 +204,7 @@ contract InteractionsTest is Test {
         }
 
         vm.startPrank(msg.sender);
-        rayFi.distributeRewardsStateless(0, new address[](0));
+        rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
         uint256 amountOut = router.getAmountOut(FUND_AMOUNT, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
@@ -239,7 +239,7 @@ contract InteractionsTest is Test {
         }
 
         vm.startPrank(msg.sender);
-        rayFi.distributeRewardsStateless(0, new address[](0));
+        rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
         uint256 amountOut = router.getAmountOut(FUND_AMOUNT, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
@@ -283,7 +283,7 @@ contract InteractionsTest is Test {
         }
 
         vm.startPrank(msg.sender);
-        rayFi.distributeRewardsStateless(0, new address[](0));
+        rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
         uint256 amountOutRayFi = router.getAmountOut(FUND_AMOUNT / 4, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
@@ -332,7 +332,7 @@ contract InteractionsTest is Test {
         uint256 deployerBalanceBefore = rewardToken.balanceOf(msg.sender);
 
         vm.startPrank(msg.sender);
-        rayFi.distributeRewardsStateless(0, new address[](0));
+        rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
         uint256 amountOutRayFi = router.getAmountOut(FUND_AMOUNT / 8, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);

@@ -349,9 +349,8 @@ contract RayFi is ERC20, Ownable {
      * The stateless mode is always the preferred one, as it is drastically more gas-efficient
      * Rewards are either sent to users as stablecoins or reinvested into RayFi for users who have staked their tokens
      * @param maxSwapSlippage The maximum acceptable percentage slippage for the swaps
-     * @param vaultTokens The list of vaults to distribute rewards to, can be left empty to distribute to all vaults
-     */
-    function distributeRewardsStateless(uint8 maxSwapSlippage, address[] memory vaultTokens) external onlyOwner {
+          */
+    function distributeRewardsStateless(uint8 maxSwapSlippage) external onlyOwner {
         if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
         }
@@ -361,10 +360,7 @@ contract RayFi is ERC20, Ownable {
         uint256 totalRewardShares = s_totalRewardShares;
         uint256 totalStakedShares = s_totalStakedShares;
         if (totalStakedShares >= 1) {
-            if (vaultTokens.length <= 0) {
-                vaultTokens = s_vaultTokens;
-            }
-
+            address[] memory vaultTokens = s_vaultTokens;
             uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
             _processVaults(
                 vaultTokens, rewardToken, totalRewardsToReinvest, totalStakedShares, maxSwapSlippage, 0, false
