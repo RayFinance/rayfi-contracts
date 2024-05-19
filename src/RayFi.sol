@@ -379,7 +379,7 @@ contract RayFi is ERC20, Ownable {
         } else {
             address[] memory vaultTokens = s_vaultTokens;
             uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
-            _reinvestRewards(rewardToken, totalRewardsToReinvest, totalStakedShares, vaultTokens, maxSwapSlippage);
+            _reinvestRewards(rewardToken, maxSwapSlippage, totalRewardsToReinvest, totalStakedShares, vaultTokens);
             _processVaults(vaultTokens, 0, false);
 
             uint256 totalNonStakedAmount = totalRewardShares - totalStakedShares;
@@ -409,7 +409,8 @@ contract RayFi is ERC20, Ownable {
         uint96 snapshotId;
         bool isDistributionInactive = s_distributionState == DistributionState.Inactive;
         if (isDistributionInactive) {
-            snapshotId = _snapshot();
+            snapshotId = s_snapshotId++;
+            emit SnapshotTaken(snapshotId);
         } else {
             snapshotId = s_snapshotId - 1;
         }
@@ -433,7 +434,7 @@ contract RayFi is ERC20, Ownable {
             if (isDistributionInactive) {
                 uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
-                _reinvestRewards(rewardToken, totalRewardsToReinvest, totalStakedShares, vaultTokens, maxSwapSlippage);
+                _reinvestRewards(rewardToken, maxSwapSlippage, totalRewardsToReinvest, totalStakedShares, vaultTokens);
                 s_distributionState = DistributionState.ProcessingVaults;
             }
 
@@ -902,17 +903,20 @@ contract RayFi is ERC20, Ownable {
         emit RayFiUnstaked(user, value, s_totalStakedShares);
     }
 
-    function _snapshot() private returns (uint96 currentSnapshot) {
-        currentSnapshot = s_snapshotId++;
-        emit SnapshotTaken(currentSnapshot);
-    }
-
+    /**
+     * @dev Low-level function to reinvest the given amount of rewards into the vault tokens
+     * @param rewardToken The address of the reward token
+     * @param slippage The maximum acceptable percentage slippage for the reinvestment swaps
+     * @param totalRewardsToReinvest The total amount of rewards to reinvest
+     * @param totalStakedShares The total amount of staked shares
+     * @param vaultTokens The list of vaults to distribute rewards to
+     */
     function _reinvestRewards(
         address rewardToken,
+        uint8 slippage,
         uint256 totalRewardsToReinvest,
         uint256 totalStakedShares,
-        address[] memory vaultTokens,
-        uint8 slippage
+        address[] memory vaultTokens
     ) private {
         IUniswapV2Router02 router = s_router;
         ERC20(rewardToken).approve(address(s_router), totalRewardsToReinvest);
@@ -920,7 +924,7 @@ contract RayFi is ERC20, Ownable {
         for (uint256 i; i < vaultTokens.length; ++i) {
             address vaultToken = vaultTokens[i];
             uint256 totalStakedAmountInVault = s_vaults[vaultToken].totalVaultShares;
-            if (totalStakedAmountInVault <= 0) {
+            if (totalStakedAmountInVault == 0) {
                 continue;
             }
 
@@ -934,7 +938,7 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to swap the reward token using a UniswapV2-compatible router
+     * @dev Low-level function to execute a swap with the given slippage using a UniswapV2-compatible router
      * Assumes that the tokens have already been approved for spending
      * @custom:auditor This function should be reviewed for potential vulnerabilities due to price manipulation
      * @param router The address of the UniswapV2-compatible router
