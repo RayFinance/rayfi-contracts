@@ -317,36 +317,39 @@ contract RayFi is ERC20, Ownable {
     ///////////////////////////
 
     /**
-     * @notice This function allows users to stake their RayFi tokens to have their rewards reinvested in RayFi
+     * @notice This function allows users to stake their RayFi tokens in a vault to have their rewards reinvested
+     * Staking in the RayFi vault will compound the rewards, whereas rewards from other vaults will be airdropped
+     * @param vaultToken The address of the token of the vault to stake in
      * @param value The amount of tokens to stake
      */
-    function stake(address vault, uint256 value) external {
+    function stake(address vaultToken, uint256 value) external {
         if (!s_shareholders.contains(msg.sender)) {
             revert RayFi__InsufficientTokensToStake(s_minimumTokenBalanceForRewards);
-        } else if (s_vaults[vault].vaultId <= 0) {
-            revert RayFi__VaultDoesNotExist(vault);
+        } else if (s_vaults[vaultToken].vaultId <= 0) {
+            revert RayFi__VaultDoesNotExist(vaultToken);
         } else if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
         }
 
         super._update(msg.sender, address(this), value);
-        _stake(vault, msg.sender, uint160(value));
+        _stake(vaultToken, msg.sender, uint160(value));
     }
 
     /**
-     * @notice This function allows users to unstake their RayFi tokens
+     * @notice This function allows users to unstake their RayFi tokens from a vault
      * @dev We do not check if the vault exists so that users may withdraw from a vault that has been removed
+     * @param vaultToken The address of the token of the vault to unstake from
      * @param value The amount of tokens to unstake
      */
-    function unstake(address vault, uint256 value) external {
-        uint256 stakedBalance = s_vaults[vault].stakers.get(msg.sender);
+    function unstake(address vaultToken, uint256 value) external {
+        uint256 stakedBalance = s_vaults[vaultToken].stakers.get(msg.sender);
         if (stakedBalance < value) {
             revert RayFi__InsufficientStakedBalance(stakedBalance, value);
         } else if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
         }
 
-        _unstake(vault, msg.sender, uint160(value));
+        _unstake(vaultToken, msg.sender, uint160(value));
         super._update(address(this), msg.sender, value);
     }
 
@@ -820,8 +823,9 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to stake RayFi tokens
+     * @dev Low-level function to stake RayFi tokens in a given vault
      * Assumes that `_balances` have already been updated and that the vault exists
+     * @param vaultToken The address of the token of the vault to stake in
      * @param user The address of the user to stake the RayFi tokens for
      * @param value The amount of RayFi tokens to stake
      */
@@ -842,7 +846,9 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Low-level function to unstake RayFi tokens
+     * @dev Low-level function to unstake RayFi tokens from a given vault
+     * Assumes that the vault exists and that the user has enough staked tokens
+     * @param vaultToken The address of the token of the vault to unstake from
      * @param user The address of the user to unstake the RayFi tokens for
      * @param value The amount of RayFi tokens to unstake
      */
