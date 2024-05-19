@@ -543,9 +543,9 @@ contract RayFiTest is Test {
         vm.stopPrank();
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        assertEq(entries[1].topics[0], keccak256("RewardsDistributed(uint256,uint256)"));
+        assertEq(entries[1].topics[0], keccak256("RewardsDistributed(uint256,address)"));
         assert(entries[1].topics[1] >= bytes32(TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS));
-        assertEq(entries[1].topics[2], 0);
+        assertEq(entries[1].topics[2], bytes32(uint256(uint160(address(rewardToken)))));
     }
 
     function testStatelessReinvestmentWorksForMultipleUsers()
@@ -594,9 +594,9 @@ contract RayFiTest is Test {
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
         uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
-        assertEq(entries[6].topics[0], keccak256("RewardsDistributed(uint256,uint256)"));
-        assertEq(entries[6].topics[1], 0);
-        assert(entries[6].topics[2] >= bytes32(amountOut - ACCEPTED_PRECISION_LOSS));
+        assertEq(entries[6].topics[0], keccak256("RewardsReinvested(uint256,address)"));
+        assert(entries[6].topics[1] >= bytes32(amountOut - ACCEPTED_PRECISION_LOSS));
+        assertEq(entries[6].topics[2], bytes32(uint256(uint160(address(rayFi)))));
     }
 
     function testStatelessDistributionAndReinvestmentWorksForMultipleUsers()
@@ -665,9 +665,9 @@ contract RayFiTest is Test {
         vm.stopPrank();
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        assertEq(entries[2].topics[0], keccak256("RewardsDistributed(uint256,uint256)"));
+        assertEq(entries[2].topics[0], keccak256("RewardsDistributed(uint256,address)"));
         assert(entries[2].topics[1] >= bytes32(TRANSFER_AMOUNT - ACCEPTED_PRECISION_LOSS));
-        assertEq(entries[2].topics[2], 0);
+        assertEq(entries[2].topics[2], bytes32(uint256(uint160(address(rewardToken)))));
     }
 
     function testStatefulReinvestmentWorksForMultipleUsers()

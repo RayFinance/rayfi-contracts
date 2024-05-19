@@ -133,9 +133,16 @@ contract RayFi is ERC20, Ownable {
     /**
      * @notice Emitted when rewards are distributed
      * @param totalRewardsWithdrawn The amount of rewards that were airdropped to users
-     * @param totalRayFiStaked The amount of RayFi that was staked after reinvesting rewards
+     * @param rewardToken The address of the token that was distributed as rewards
      */
-    event RewardsDistributed(uint256 indexed totalRewardsWithdrawn, uint256 indexed totalRayFiStaked);
+    event RewardsDistributed(uint256 indexed totalRewardsWithdrawn, address indexed rewardToken);
+
+    /**
+     * @notice Emitted when rewards are reinvested
+     * @param totalRewardsReinvested The amount of rewards that were reinvested in vaults
+     * @param vaultToken The address of the vault token the rewards were reinvested into
+     */
+    event RewardsReinvested(uint256 indexed totalRewardsReinvested, address indexed vaultToken);
 
     /**
      * @notice Emitted when a snapshot is taken
@@ -1019,7 +1026,7 @@ contract RayFi is ERC20, Ownable {
             isComplete = true;
         }
 
-        emit RewardsDistributed(earnedRewards, 0);
+        emit RewardsDistributed(earnedRewards, rewardToken);
     }
 
     /**
@@ -1149,7 +1156,7 @@ contract RayFi is ERC20, Ownable {
             s_totalStakedSharesSnapshots.push(snapshotId, s_totalStakedSharesSnapshots.latest() + delta);
         }
 
-        emit RewardsDistributed(0, vaultRewards);
+        emit RewardsReinvested(vaultRewards, vaultToken);
     }
 
     /**
