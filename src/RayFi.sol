@@ -752,7 +752,7 @@ contract RayFi is ERC20, Ownable {
     //////////////////////////
 
     /**
-     * @dev Overrides the internal `_update` function to include fee logic and update the reward tracker
+     * @dev Overrides the internal `_update` function to include fee logic and shareholder tracking for rewards
      * @param from The address of the sender
      * @param to The address of the recipient
      * @param value The amount of tokens to transfer
@@ -792,7 +792,7 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Takes a fee from the transaction and updates the reward tracker
+     * @dev Takes a fee from a transaction value and sends it to the fee receiver
      * @param from The address of the sender
      * @param value The amount of tokens to take the fee from
      * @param fee The fee percentage to take
@@ -805,8 +805,9 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Updates the shareholder list based on the new balance
+     * @dev Updates the given shareholder map and snapshot
      * @param shareholder The address of the shareholder
+     * @param snapshotId The id of the snapshot
      */
     function _updateShareholder(address shareholder, uint96 snapshotId) private {
         uint256 newBalance = balanceOf(shareholder);
@@ -829,15 +830,16 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
-     * @dev Removes a shareholder from the list and retrieves their staked tokens
+     * @dev Removes a shareholder from the map, retrieves their staked tokens and updates the given snapshot
      * @param shareholder The address of the shareholder
+     * @param snapshotId The id of the snapshot
      */
     function _removeShareholder(address shareholder, uint96 snapshotId) private {
         if (s_shareholders.contains(shareholder)) {
             s_totalRewardShares -= s_shareholders.get(shareholder);
             s_shareholders.remove(shareholder);
             uint256 stakedBalance = s_stakedBalances[shareholder];
-            if (stakedBalance >= 1) {
+            if (stakedBalance > 0) {
                 for (uint256 i; i < s_vaultTokens.length; ++i) {
                     address vaultToken = s_vaultTokens[i];
                     _unstake(vaultToken, shareholder, uint160(s_vaults[vaultToken].stakers.get(shareholder)));
