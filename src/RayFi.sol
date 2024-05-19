@@ -325,7 +325,7 @@ contract RayFi is ERC20, Ownable {
     function stake(address vaultToken, uint256 value) external {
         if (!s_shareholders.contains(msg.sender)) {
             revert RayFi__InsufficientTokensToStake(s_minimumTokenBalanceForRewards);
-        } else if (s_vaults[vaultToken].vaultId <= 0) {
+        } else if (s_vaults[vaultToken].vaultId == 0) {
             revert RayFi__VaultDoesNotExist(vaultToken);
         } else if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
@@ -337,7 +337,7 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @notice This function allows users to unstake their RayFi tokens from a vault
-     * @dev We do not check if the vault exists so that users may withdraw from a vault that has been removed
+     * @dev It is enough to check the user balance since it will be zero for inexistent vaults
      * @param vaultToken The address of the token of the vault to unstake from
      * @param value The amount of tokens to unstake
      */
@@ -458,33 +458,54 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @notice This function allows the owner to add a new vault to the RayFi protocol
+     * @dev Using the length of the `s_vaultTokens` array as the vault id allows us to easily remove it later
+     * or to use the 0 id to check if a vault exists
      * @param vaultToken The key of the new vault, which should be the address of the associated ERC20 reward token
      */
     function addVault(address vaultToken) external onlyOwner {
-        if (s_vaults[vaultToken].vaultId != 0) {
+        Vault storage vault = s_vaults[vaultToken];
+        if (vault.vaultId != 0) {
             revert RayFi__VaultAlreadyExists(vaultToken);
         } else if (vaultToken == address(0)) {
             revert RayFi__CannotSetToZeroAddress();
+        } else if (s_distributionState != DistributionState.Inactive) {
+            revert RayFi__DistributionInProgress();
         } else {
             s_vaultTokens.push(vaultToken);
-            s_vaults[vaultToken].vaultId = s_vaultTokens.length;
+            vault.vaultId = s_vaultTokens.length;
         }
     }
 
     /**
      * @notice This function allows the owner to remove a vault from the RayFi protocol
-     * @dev To remove a vault, we only need to reset its id, rather than all the data related to it
-     * This is because the `s_vaultTokens` array will be left with a gap and if the same vault is added again,
-     * it will be assigned a new id, which is the next available index in the `s_vaultTokens`
+     * @dev We have to ensure the vault is fully reset to prevent any leftover state affecting future distributions
+     * @custom:auditor It has to be evaluated whether this approach is sustainable in the long term
      * @param vaultToken The key of the vault to remove
      */
     function removeVault(address vaultToken) external onlyOwner {
-        uint256 vaultId = s_vaults[vaultToken].vaultId;
-        if (vaultId <= 0) {
+        Vault storage vault = s_vaults[vaultToken];
+        uint256 vaultId = vault.vaultId;
+        if (vaultId == 0) {
             revert RayFi__VaultDoesNotExist(vaultToken);
+        } else if (s_distributionState != DistributionState.Inactive) {
+            revert RayFi__DistributionInProgress();
         } else {
-            delete s_vaultTokens[vaultId - 1];
-            delete s_vaults[vaultToken].vaultId;
+            EnumerableMap.AddressToUintMap storage stakersBalancesMap = vault.stakers;
+            address[] memory stakers = stakersBalancesMap.keys();
+            for (uint256 i; i < stakers.length; ++i) {
+                address staker = stakers[i];
+                uint256 stakedAmount = stakersBalancesMap.get(staker);
+                _unstake(vaultToken, staker, uint160(stakedAmount));
+                super._update(address(this), staker, stakedAmount);
+            }
+            vault.vaultId = 0;
+            vault.totalVaultShares = 0;
+            uint256 vaultIndex = vaultId - 1;
+            uint256 lastVaultIndex = s_vaultTokens.length - 1;
+            if (vaultIndex != lastVaultIndex) {
+                s_vaultTokens[vaultIndex] = s_vaultTokens[lastVaultIndex];
+            }
+            s_vaultTokens.pop();
         }
     }
 
@@ -856,7 +877,7 @@ contract RayFi is ERC20, Ownable {
         Vault storage vault = s_vaults[vaultToken];
         uint256 userBalance = vault.stakers.get(user);
         uint256 remainingBalance = userBalance - value;
-        if (remainingBalance <= 0) {
+        if (remainingBalance == 0) {
             vault.stakers.remove(user);
         } else {
             vault.stakers.set(user, remainingBalance);
