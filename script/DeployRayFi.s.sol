@@ -17,7 +17,7 @@ contract DeployRayFi is Script {
         (address rewardTokenAddress, address routerAddress,,,) = helper.activeNetworkConfig();
 
         vm.startBroadcast();
-        rayFi = new RayFi(rewardTokenAddress, routerAddress, feeReceiver, swapReceiver);
+        rayFi = new RayFi(routerAddress, rewardTokenAddress, swapReceiver, feeReceiver);
         vm.stopBroadcast();
         return (rayFi, ERC20Mock(rewardTokenAddress), IUniswapV2Router02(routerAddress));
     }

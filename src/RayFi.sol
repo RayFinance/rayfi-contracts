@@ -278,12 +278,12 @@ contract RayFi is ERC20, Ownable {
     ////////////////////
 
     /**
-     * @param rewardToken The address of the token that will be used to distribute rewards
      * @param router The address of the router that will be used to reinvest rewards
-     * @param feeReceiver The address of the contract that will track rewards
-     * @param swapReceiver The address of the wallet that will distribute swapped rewards
+     * @param rewardToken The address of the token that will be distributed as default rewards
+     * @param swapReceiver The address of the wallet that will distribute reinvested rewards
+     * @param feeReceiver The address of the wallet that will receive trading fees
      */
-    constructor(address rewardToken, address router, address feeReceiver, address swapReceiver)
+    constructor(address router, address rewardToken, address swapReceiver, address feeReceiver)
         ERC20("RayFi", "RAYFI")
         Ownable(msg.sender)
     {
@@ -293,15 +293,16 @@ contract RayFi is ERC20, Ownable {
             revert RayFi__CannotSetToZeroAddress();
         }
 
-        s_rewardToken = rewardToken;
         s_router = IUniswapV2Router02(router);
-        s_feeReceiver = feeReceiver;
+        s_rewardToken = rewardToken;
         s_swapReceiver = swapReceiver;
+        s_feeReceiver = feeReceiver;
 
         s_isFeeExempt[swapReceiver] = true;
+        s_isFeeExempt[feeReceiver] = true;
 
-        s_isExcludedFromRewards[feeReceiver] = true;
         s_isExcludedFromRewards[swapReceiver] = true;
+        s_isExcludedFromRewards[feeReceiver] = true;
         s_isExcludedFromRewards[address(this)] = true;
         s_isExcludedFromRewards[address(0)] = true;
 
