@@ -418,4 +418,39 @@ contract InteractionsTest is Test {
             assert(bnb.balanceOf(users[i]) >= amountOutBNB / users.length - ACCEPTED_PRECISION_LOSS);
         }
     }
+
+    function testMultipleDistributionsNoVaultsStateful() public {
+        FundRayFi fundRayFi = new FundRayFi();
+
+        vm.startPrank(msg.sender);
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+
+        vm.startPrank(msg.sender);
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+
+        address[] memory users = rayFi.getShareholders();
+        uint256[USER_COUNT + 1] memory balancesBefore;
+        for (uint256 i; i < 10; ++i) {
+            fundRayFi.fundRayFi(address(rayFi));
+
+            for (uint256 j; j < users.length; ++j) {
+                balancesBefore[j] = rewardToken.balanceOf(users[j]);
+            }
+
+            vm.startPrank(msg.sender);
+            for (uint256 j; j < MAX_ATTEMPTS; ++j) {
+                if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0))) {
+                    break;
+                }
+            }
+            vm.stopPrank();
+
+            for (uint256 j; j < users.length; ++j) {
+                assert(
+                    rewardToken.balanceOf(users[j])
+                        >= balancesBefore[j] + FUND_AMOUNT / users.length - ACCEPTED_PRECISION_LOSS
+                );
+            }
+        }
+    }
 }

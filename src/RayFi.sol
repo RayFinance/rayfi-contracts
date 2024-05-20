@@ -118,6 +118,7 @@ contract RayFi is ERC20, Ownable {
     address[] private s_vaultTokens;
 
     EnumerableMap.AddressToUintMap private s_shareholders;
+
     Checkpoints.Trace160 private s_totalRewardSharesSnapshots;
     Checkpoints.Trace160 private s_totalStakedSharesSnapshots;
 
