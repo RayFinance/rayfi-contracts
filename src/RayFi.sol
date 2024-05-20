@@ -591,7 +591,7 @@ contract RayFi is ERC20, Ownable {
      * @param pair The pair to update
      * @param isActive Whether the pair is an automated market maker pair
      */
-    function setAutomatedMarketPair(address pair, bool isActive) external onlyOwner {
+    function setIsAutomatedMarketPair(address pair, bool isActive) external onlyOwner {
         s_isAutomatedMarketMakerPairs[pair] = isActive;
         emit AutomatedMarketPairUpdated(pair, isActive);
     }

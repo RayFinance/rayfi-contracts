@@ -52,7 +52,7 @@ contract CreateRayFiLiquidityPool is Script {
         );
 
         address pair = IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(rayFi, rewardToken);
-        RayFi(rayFi).setAutomatedMarketPair(pair, true);
+        RayFi(rayFi).setIsAutomatedMarketPair(pair, true);
         RayFi(rayFi).setIsExcludedFromRewards(pair, true);
         vm.stopPrank();
     }

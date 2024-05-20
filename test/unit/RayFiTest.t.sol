@@ -67,7 +67,7 @@ contract RayFiTest is Test {
         );
 
         address pair = IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken));
-        rayFi.setAutomatedMarketPair(pair, true);
+        rayFi.setIsAutomatedMarketPair(pair, true);
         rayFi.setIsExcludedFromRewards(pair, true);
         vm.stopPrank();
         _;
