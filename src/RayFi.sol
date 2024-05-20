@@ -110,7 +110,7 @@ contract RayFi is ERC20, Ownable {
 
     mapping(address user => bool isExemptFromFees) private s_isFeeExempt;
     mapping(address user => bool isExcludedFromRewards) private s_isExcludedFromRewards;
-    mapping(address pair => bool isAMMPair) private s_automatedMarketMakerPairs;
+    mapping(address pair => bool isAMMPair) private s_isAutomatedMarketMakerPairs;
     mapping(address user => uint256 amountStaked) private s_stakedBalances;
     mapping(address user => Checkpoints.Trace160 balanceSnapshot) private s_balancesSnapshots;
     mapping(address token => Vault vault) private s_vaults;
@@ -592,7 +592,7 @@ contract RayFi is ERC20, Ownable {
      * @param isActive Whether the pair is an automated market maker pair
      */
     function setAutomatedMarketPair(address pair, bool isActive) external onlyOwner {
-        s_automatedMarketMakerPairs[pair] = isActive;
+        s_isAutomatedMarketMakerPairs[pair] = isActive;
         emit AutomatedMarketPairUpdated(pair, isActive);
     }
 
@@ -698,10 +698,11 @@ contract RayFi is ERC20, Ownable {
     /**
      * @notice Get the total amount of shares owned by a user
      * @dev This is expected to be 0 if `balanceOf(user)` < `s_minimumTokenBalanceForRewards`
-     * @return The total shares amount
+     * @return The total shares amount owned by the user
      */
     function getSharesBalanceOf(address user) external view returns (uint256) {
-        return s_shareholders.get(user);
+        (bool isShareholder, uint256 shares) = s_shareholders.tryGet(user);
+        return isShareholder ? shares : 0;
     }
 
     /**
@@ -725,8 +726,36 @@ contract RayFi is ERC20, Ownable {
      * @notice Get the total amount of staked tokens
      * @return The total staked tokens amount
      */
-    function getTotalStakedAmount() external view returns (uint256) {
+    function getTotalStakedShares() external view returns (uint256) {
         return s_totalStakedShares;
+    }
+
+    /**
+     * @notice Get the current list of vault tokens
+     * @return The list of vault tokens
+     */
+    function getVaultTokens() external view returns (address[] memory) {
+        return s_vaultTokens;
+    }
+
+    /**
+     * @notice Get the total amount of shares staked in a specific vault by the given user
+     * @param vaultToken The address of the vault token
+     * @param user The address of the user
+     * @return The total staked shares amount of the user in the vault
+     */
+    function getVaultBalanceOf(address vaultToken, address user) external view returns (uint256) {
+        (bool isStakerInVault, uint256 vaultShares) = s_vaults[vaultToken].stakers.tryGet(user);
+        return isStakerInVault ? vaultShares : 0;
+    }
+
+    /**
+     * @notice Get the total amount of shares staked in a specific vault
+     * @param vaultToken The address of the vault token
+     * @return The total staked shares amount
+     */
+    function getTotalVaultShares(address vaultToken) external view returns (uint256) {
+        return s_vaults[vaultToken].totalVaultShares;
     }
 
     /**
@@ -735,6 +764,42 @@ contract RayFi is ERC20, Ownable {
      */
     function getMinimumTokenBalanceForRewards() external view returns (uint256) {
         return s_minimumTokenBalanceForRewards;
+    }
+
+    /**
+     * @notice Get the current snapshot id
+     * @return The snapshot id
+     */
+    function getCurrentSnapshotId() external view returns (uint96) {
+        return s_snapshotId;
+    }
+
+    /**
+     * @notice Get the token balance of a user at a specific snapshot
+     * @param user The address of the user
+     * @param snapshotId The id of the snapshot
+     * @return The token balance of the user at the snapshot
+     */
+    function getBalanceOfAtSnapshot(address user, uint96 snapshotId) external view returns (uint256) {
+        return s_balancesSnapshots[user].upperLookupRecent(snapshotId);
+    }
+
+    /**
+     * @notice Get the total reward shares at a specific snapshot
+     * @param snapshotId The id of the snapshot
+     * @return The total reward shares at the snapshot
+     */
+    function getTotalRewardSharesAtSnapshot(uint96 snapshotId) external view returns (uint256) {
+        return s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
+    }
+
+    /**
+     * @notice Get the total staked shares at a specific snapshot
+     * @param snapshotId The id of the snapshot
+     * @return The total staked shares at the snapshot
+     */
+    function getTotalStakedSharesAtSnapshot(uint96 snapshotId) external view returns (uint256) {
+        return s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
     }
 
     /**
@@ -751,6 +816,14 @@ contract RayFi is ERC20, Ownable {
      */
     function getFeeReceiver() external view returns (address) {
         return s_feeReceiver;
+    }
+
+    /**
+     * @notice Get whether trading fees are enabled
+     * @return Whether trading fees are enabled
+     */
+    function getAreTradingFeesEnabled() external view returns (bool) {
+        return s_areTradingFeesEnabled;
     }
 
     /**
@@ -785,13 +858,13 @@ contract RayFi is ERC20, Ownable {
         }
 
         if (s_areTradingFeesEnabled) {
-            if (s_automatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
+            if (s_isAutomatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
                 // Buy order
                 uint8 buyFee = s_buyFee;
                 if (buyFee >= 1) {
                     value -= _takeFee(from, value, buyFee);
                 }
-            } else if (s_automatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
+            } else if (s_isAutomatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
                 // Sell order
                 uint8 sellFee = s_sellFee;
                 if (sellFee >= 1) {

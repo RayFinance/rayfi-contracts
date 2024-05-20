@@ -88,7 +88,7 @@ contract InteractionsTest is Test {
         FullyStakeRayFiUsersSingleVault fullyStakeRayFiUsersSingleVault = new FullyStakeRayFiUsersSingleVault();
         fullyStakeRayFiUsersSingleVault.fullyStakeRayFiUsers(address(rayFi));
 
-        assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedAmount());
+        assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedShares());
     }
 
     function testPartiallyStakeRayFiUsersSingleVault() public {
@@ -101,7 +101,7 @@ contract InteractionsTest is Test {
             new PartiallyStakeRayFiUsersSingleVault();
         partiallyStakeRayFiUsersSingleVault.partiallyStakeRayFiUsers(address(rayFi));
 
-        assertEq(rayFi.getTotalRewardShares() / 2, rayFi.getTotalStakedAmount());
+        assertEq(rayFi.getTotalRewardShares() / 2, rayFi.getTotalStakedShares());
     }
 
     function testAddMockRayFiVaults() public {
@@ -136,7 +136,7 @@ contract InteractionsTest is Test {
         address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
         fullyStakeRayFiUsersMultipleVaults.fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
 
-        assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedAmount());
+        assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedShares());
     }
 
     function testPartiallyStakeRayFiUsersMultipleVaults() public {
@@ -157,9 +157,9 @@ contract InteractionsTest is Test {
         partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
 
         assert(
-            rayFi.getTotalStakedAmount()
+            rayFi.getTotalStakedShares()
                 >= rayFi.getTotalRewardShares() / 2 - ACCEPTED_PRECISION_LOSS * USER_COUNT * vaults.length
-                && rayFi.getTotalStakedAmount()
+                && rayFi.getTotalStakedShares()
                     <= rayFi.getTotalRewardShares() / 2 + ACCEPTED_PRECISION_LOSS * USER_COUNT * vaults.length
         );
     }

@@ -202,8 +202,7 @@ contract RayFiTest is Test {
         assertEq(shareholders.length, 1);
         assertEq(shareholders[0], msg.sender);
         assertEq(rayFi.getSharesBalanceOf(msg.sender), MAX_SUPPLY);
-        vm.expectRevert(abi.encodeWithSelector(EnumerableMap.EnumerableMapNonexistentKey.selector, address(this)));
-        rayFi.getSharesBalanceOf(address(this));
+        assertEq(rayFi.getSharesBalanceOf(address(this)), 0);
     }
 
     function testTradingFeesRemovalWorks() public feesSet {
@@ -373,7 +372,7 @@ contract RayFiTest is Test {
         assertEq(rayFi.getStakedBalanceOf(msg.sender), TRANSFER_AMOUNT);
         assertEq(rayFi.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
         assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT);
-        assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT);
+        assertEq(rayFi.getTotalStakedShares(), TRANSFER_AMOUNT);
         assertEq(rayFi.getTotalRewardShares(), totalRewardSharesBefore);
         assertEq(rayFi.getSharesBalanceOf(msg.sender), balanceBefore);
     }
@@ -423,7 +422,7 @@ contract RayFiTest is Test {
         assertEq(rayFi.getStakedBalanceOf(msg.sender), TRANSFER_AMOUNT / 2);
         assertEq(rayFi.balanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT - TRANSFER_AMOUNT / 2);
         assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT + TRANSFER_AMOUNT / 2);
-        assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT + TRANSFER_AMOUNT / 2);
+        assertEq(rayFi.getTotalStakedShares(), TRANSFER_AMOUNT + TRANSFER_AMOUNT / 2);
         assertEq(rayFi.getSharesBalanceOf(msg.sender), balanceBefore - TRANSFER_AMOUNT);
 
         vm.recordLogs();
@@ -437,7 +436,7 @@ contract RayFiTest is Test {
         assertEq(rayFi.getStakedBalanceOf(address(this)), 0);
         assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT);
         assertEq(rayFi.balanceOf(address(rayFi)), TRANSFER_AMOUNT / 2);
-        assertEq(rayFi.getTotalStakedAmount(), TRANSFER_AMOUNT / 2);
+        assertEq(rayFi.getTotalStakedShares(), TRANSFER_AMOUNT / 2);
         assertEq(rayFi.getSharesBalanceOf(address(this)), TRANSFER_AMOUNT);
     }
 
