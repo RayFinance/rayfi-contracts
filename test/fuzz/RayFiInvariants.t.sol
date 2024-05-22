@@ -121,4 +121,7 @@ contract Invariants is StdInvariant, Test {
         rayFi.getBuyFee();
         rayFi.getSellFee();
     }
+
+    // Excludes contract from coverage report
+    function test() public {}
 }

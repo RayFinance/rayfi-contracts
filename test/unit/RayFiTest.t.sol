@@ -151,6 +151,16 @@ contract RayFiTest is Test {
         assertEq(rayFi.balanceOf(FEE_RECEIVER), feeAmount);
     }
 
+    function testTransferWorksAfterPermanentlyDisablingTradingFees() public feesSet {
+        vm.startPrank(msg.sender);
+        rayFi.removeTradingFees();
+        rayFi.transfer(address(this), TRANSFER_AMOUNT);
+        vm.stopPrank();
+
+        assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT);
+        assertEq(rayFi.getAreTradingFeesEnabled(), false);
+    }
+
     function testTransferToFeeExemptAddressWorks() public feesSet {
         vm.startPrank(msg.sender);
         rayFi.setIsFeeExempt(address(this), true);

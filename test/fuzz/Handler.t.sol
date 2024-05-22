@@ -148,4 +148,7 @@ contract Handler is Test {
             return address(bnb);
         }
     }
+
+    // Excludes contract from coverage report
+    function test() public {}
 }
