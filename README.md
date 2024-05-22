@@ -1,3 +1,5 @@
-# Ray Finance
-
-This is the core repository of the Ray Finance ecosystem.
+<br/>
+<p align="center">
+<img src="./img/logo.png" width="300" alt="Ray Finance Logo">
+</p>
+<br/>
