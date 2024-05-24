@@ -1161,8 +1161,6 @@ contract RayFi is ERC20, Ownable {
 
             if (_processVault(magnifiedVaultRewardsPerShare, vaultToken, gasForRewards, isVaultTokenRayFi, isStateful))
             {
-                vault.magnifiedRewardPerShare = 0;
-                vault.state = VaultState.ResetPending;
                 continue;
             } else {
                 return false;
@@ -1213,6 +1211,8 @@ contract RayFi is ERC20, Ownable {
 
                 ++lastProcessedIndex;
                 if (lastProcessedIndex >= shareholders.length) {
+                    vault.magnifiedRewardPerShare = 0;
+                    vault.state = VaultState.ResetPending;
                     lastProcessedIndex = 0;
                     isComplete = true;
                     break;
