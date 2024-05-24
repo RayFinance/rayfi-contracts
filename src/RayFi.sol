@@ -380,9 +380,21 @@ contract RayFi is ERC20, Ownable {
     }
 
     /**
+     * @notice This function allows the owner to take a snapshot of the current state of the RayFi protocol
+     * @dev By increasing `s_snapshotId` with the `++` operator on the right,
+     * `currentSnapshotId` will be equal to `s_snapshotId - 1` after the function call
+     * @return currentSnapshotId The id of the current snapshot
+     */
+    function snapshot() external onlyOwner returns (uint96 currentSnapshotId) {
+        currentSnapshotId = s_snapshotId++;
+        emit SnapshotTaken(currentSnapshotId);
+    }
+
+    /**
      * @notice High-level function to start the reward distribution process in stateless mode
      * The stateless mode is always the preferred one, as it is drastically more gas-efficient
      * Rewards are either sent to users as stablecoins or reinvested for users who have staked their tokens in vaults
+     * @dev This function assumes that a snapshot has been taken before the distribution process
      * @param maxSwapSlippage The maximum acceptable percentage slippage for the reinvestment swaps
      */
     function distributeRewardsStateless(uint8 maxSwapSlippage) external onlyOwner {
@@ -391,12 +403,13 @@ contract RayFi is ERC20, Ownable {
         }
 
         address rewardToken = s_rewardToken;
+        uint96 snapshotId = s_snapshotId - 1;
         uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         uint256 totalRewardShares = s_totalRewardShares;
         uint256 totalStakedShares = s_totalStakedShares;
         if (totalStakedShares == 0) {
             uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
-            _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
+            _processRewards(magnifiedRewardPerShare, rewardToken, snapshotId, false, 0);
         } else {
             address[] memory vaultTokens = s_vaultTokens;
             uint256 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
@@ -407,7 +420,7 @@ contract RayFi is ERC20, Ownable {
             if (totalNonStakedAmount > 0) {
                 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 uint256 magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalNonStakedAmount);
-                _processRewards(magnifiedRewardPerShare, rewardToken, 0, false, 0);
+                _processRewards(magnifiedRewardPerShare, rewardToken, snapshotId, false, 0);
             }
         }
     }
@@ -416,6 +429,7 @@ contract RayFi is ERC20, Ownable {
      * @notice High-level function to start the reward distribution process in stateful mode
      * The stateful mode is a backup to use only in case the stateless mode is unable to complete the distribution
      * Rewards are either sent to users as stablecoins or reinvested for users who have staked their tokens in vaults
+     * @dev This function assumes that a snapshot has been taken before the distribution process
      * @param gasForRewards The amount of gas to use for processing rewards
      * This is a safety mechanism to prevent the contract from running out of gas at an inconvenient time
      * `gasForRewards` should be set to a value that is less than the gas limit of the transaction
@@ -427,20 +441,12 @@ contract RayFi is ERC20, Ownable {
         onlyOwner
         returns (bool isComplete)
     {
-        uint96 snapshotId;
-        bool isDistributionInactive = s_distributionState == DistributionState.Inactive;
-        if (isDistributionInactive) {
-            snapshotId = s_snapshotId++;
-            emit SnapshotTaken(snapshotId);
-        } else {
-            snapshotId = s_snapshotId - 1;
-        }
-
+        uint96 snapshotId = s_snapshotId - 1;
         address rewardToken = s_rewardToken;
         uint256 totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
         uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
         if (totalStakedShares == 0) {
-            if (isDistributionInactive) {
+            if (s_distributionState == DistributionState.Inactive) {
                 uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 s_magnifiedRewardPerShare = _calculateRewardPerShare(totalUnclaimedRewards, totalRewardShares);
                 s_distributionState = DistributionState.ProcessingRewards;
@@ -452,7 +458,7 @@ contract RayFi is ERC20, Ownable {
             }
 
             uint256 totalRewardsToReinvest;
-            if (isDistributionInactive) {
+            if (s_distributionState == DistributionState.Inactive) {
                 uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
                 totalRewardsToReinvest = totalUnclaimedRewards * totalStakedShares / totalRewardShares;
                 _reinvestRewards(rewardToken, maxSwapSlippage, totalRewardsToReinvest, totalStakedShares, vaultTokens);
@@ -1090,9 +1096,7 @@ contract RayFi is ERC20, Ownable {
             while (gasUsed < gasForRewards) {
                 // (address user,) = s_shareholders.at(lastProcessedIndex);
                 address user = shareholders[lastProcessedIndex];
-                earnedRewards += _processRewardOfUser(
-                    user, magnifiedRewardPerShare, s_balancesSnapshots[user].upperLookupRecent(snapshotId), rewardToken
-                );
+                earnedRewards += _processRewardOfUser(user, snapshotId, magnifiedRewardPerShare, rewardToken);
 
                 ++lastProcessedIndex;
                 if (lastProcessedIndex >= shareholders.length) {
@@ -1108,7 +1112,7 @@ contract RayFi is ERC20, Ownable {
             for (uint256 i; i < shareholders.length; ++i) {
                 // (address user,) = s_shareholders.at(i);
                 address user = shareholders[i];
-                earnedRewards += _processRewardOfUser(user, magnifiedRewardPerShare, balanceOf(user), rewardToken);
+                earnedRewards += _processRewardOfUser(user, snapshotId, magnifiedRewardPerShare, rewardToken);
             }
             isComplete = true;
         }
@@ -1249,16 +1253,17 @@ contract RayFi is ERC20, Ownable {
     /**
      * @notice Processes rewards for a specific token holder
      * @param user The address of the token holder
+     * @param snapshotId The id of the snapshot to use
      * @param magnifiedRewardPerShare The magnified reward amount per share
-     * @param balance The balance of the token holder
      * @param rewardToken The address of the reward token
      * @return earnedReward The amount of rewards withdrawn
      */
-    function _processRewardOfUser(address user, uint256 magnifiedRewardPerShare, uint256 balance, address rewardToken)
+    function _processRewardOfUser(address user, uint96 snapshotId, uint256 magnifiedRewardPerShare, address rewardToken)
         private
         returns (uint256 earnedReward)
     {
-        earnedReward = _calculateReward(magnifiedRewardPerShare, balance);
+        earnedReward =
+            _calculateReward(magnifiedRewardPerShare, s_balancesSnapshots[user].upperLookupRecent(snapshotId));
         if (earnedReward > 0) {
             ERC20(rewardToken).transfer(user, earnedReward);
         }

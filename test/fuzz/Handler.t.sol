@@ -113,6 +113,7 @@ contract Handler is Test {
         uint256 amount = getRandomNumber(5_000 ether, 50_000 ether);
         rewardToken.mint(address(rayFi), amount);
         vm.startPrank(rayFi.owner());
+        rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
     }
 
@@ -120,6 +121,7 @@ contract Handler is Test {
         uint256 amount = getRandomNumber(5_000 ether, 50_000 ether);
         rewardToken.mint(address(rayFi), amount);
         vm.startPrank(rayFi.owner());
+        rayFi.snapshot();
         for (uint256 i; i < MAX_ATTEMPTS; ++i) {
             if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0))) {
                 break;

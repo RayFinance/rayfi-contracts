@@ -170,6 +170,7 @@ contract InteractionsTest is Test {
         createRayFiUsers.createRayFiUsers(address(rayFi));
 
         vm.startPrank(msg.sender);
+        rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
@@ -201,6 +202,7 @@ contract InteractionsTest is Test {
         }
 
         vm.startPrank(msg.sender);
+        rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
@@ -236,6 +238,7 @@ contract InteractionsTest is Test {
         }
 
         vm.startPrank(msg.sender);
+        rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
@@ -280,6 +283,7 @@ contract InteractionsTest is Test {
         }
 
         vm.startPrank(msg.sender);
+        rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
@@ -329,6 +333,7 @@ contract InteractionsTest is Test {
         uint256 deployerBalanceBefore = rewardToken.balanceOf(msg.sender);
 
         vm.startPrank(msg.sender);
+        rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
         vm.stopPrank();
 
@@ -386,6 +391,7 @@ contract InteractionsTest is Test {
         uint256 deployerBalanceBefore = rewardToken.balanceOf(msg.sender);
 
         vm.startPrank(msg.sender);
+        rayFi.snapshot();
         for (uint256 i; i < MAX_ATTEMPTS; ++i) {
             if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0))) {
                 break;
@@ -435,6 +441,7 @@ contract InteractionsTest is Test {
             }
 
             vm.startPrank(msg.sender);
+            rayFi.snapshot();
             for (uint256 j; j < MAX_ATTEMPTS; ++j) {
                 if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 10}(GAS_FOR_REWARDS, 0, new address[](0))) {
                     break;
