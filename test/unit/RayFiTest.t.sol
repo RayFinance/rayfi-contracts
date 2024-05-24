@@ -895,22 +895,6 @@ contract RayFiTest is Test {
         rayFi.distributeRewardsStateless(0);
     }
 
-    function testStatefulDistributionRevertsOnInsufficientGas() public liquidityAdded {
-        rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
-        vm.startPrank(msg.sender);
-        rewardToken.transfer(address(rayFi), TRANSFER_AMOUNT);
-
-        rayFi.snapshot();
-        vm.expectRevert();
-        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS / 2}(GAS_FOR_REWARDS, 0, new address[](0));
-
-        rayFi.stake(address(rayFi), rayFi.balanceOf(msg.sender));
-
-        vm.expectRevert();
-        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS / 2}(GAS_FOR_REWARDS, 0, new address[](0));
-        vm.stopPrank();
-    }
-
     function testEmptyVaultsDoNotBreakDistribution() public liquidityAdded {
         rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
         vm.startPrank(msg.sender);

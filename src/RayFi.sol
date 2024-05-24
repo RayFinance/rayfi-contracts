@@ -288,13 +288,6 @@ contract RayFi is ERC20, Ownable {
     error RayFi__FeesTooHigh(uint256 totalFees);
 
     /**
-     * @dev Triggered when trying to process rewards, but not enough gas was sent with the transaction
-     * @param gasRequested The amount of gas requested
-     * @param gasProvided The amount of gas provided
-     */
-    error RayFi__InsufficientGas(uint256 gasRequested, uint256 gasProvided);
-
-    /**
      * @dev Triggered when trying to alter the state of the distribution while it is already in progress
      */
     error RayFi__DistributionInProgress();
@@ -1087,10 +1080,6 @@ contract RayFi is ERC20, Ownable {
         uint256 earnedRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
-            if (gasForRewards >= startingGas) {
-                revert RayFi__InsufficientGas(gasForRewards, startingGas);
-            }
-
             uint256 lastProcessedIndex = s_lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
@@ -1201,10 +1190,6 @@ contract RayFi is ERC20, Ownable {
         uint256 vaultRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
-            if (gasForRewards >= startingGas) {
-                revert RayFi__InsufficientGas(gasForRewards, startingGas);
-            }
-
             uint256 lastProcessedIndex = vault.lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
