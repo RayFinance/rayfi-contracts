@@ -309,9 +309,13 @@ contract RayFiTest is Test {
         path[0] = address(rewardToken);
         path[1] = address(rayFi);
         amountIn = amountOut;
-        (uint112 rewardLiquidity, uint112 rayFiLiquidity,) = IUniswapV2Pair(
+        IUniswapV2Pair pair =
+            IUniswapV2Pair(IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken)));
+        (uint112 liquidity0, uint112 liquidity1,) = IUniswapV2Pair(
             IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken))
         ).getReserves();
+        uint112 rayFiLiquidity = pair.token0() == address(rayFi) ? liquidity0 : liquidity1;
+        uint112 rewardLiquidity = pair.token0() == address(rewardToken) ? liquidity0 : liquidity1;
         amountOut = router.getAmountOut(amountIn, rewardLiquidity, rayFiLiquidity);
         uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
 
@@ -348,9 +352,17 @@ contract RayFiTest is Test {
         path[0] = address(rewardToken);
         path[1] = address(rayFi);
         amountIn = amountOut;
-        (uint112 rewardLiquidity, uint112 rayFiLiquidity,) = IUniswapV2Pair(
-            IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken))
-        ).getReserves();
+        uint112 rayFiLiquidity;
+        uint112 rewardLiquidity;
+        {
+            IUniswapV2Pair pair =
+                IUniswapV2Pair(IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken)));
+            (uint112 liquidity0, uint112 liquidity1,) = IUniswapV2Pair(
+                IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken))
+            ).getReserves();
+            rayFiLiquidity = pair.token0() == address(rayFi) ? liquidity0 : liquidity1;
+            rewardLiquidity = pair.token0() == address(rewardToken) ? liquidity0 : liquidity1;
+        }
         amountOut = router.getAmountOut(amountIn, rewardLiquidity, rayFiLiquidity);
         feeAmount = amountOut * BUY_FEE / 100;
         uint256 adjustedAmountOut = amountOut - feeAmount;
