@@ -47,3 +47,6 @@ endif
 
 deploy:
 	@forge script script/DeployRayFi.s.sol:DeployRayFi $(NETWORK_ARGS)
+
+create-pair:
+	@forge script script/Interactions.s.sol:CreateRayFiLiquidityPool $(NETWORK_ARGS)

@@ -34,8 +34,7 @@ contract CreateRayFiLiquidityPool is Script {
     uint256 constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
 
     function createRayFiLiquidityPool(address rayFi, address rewardToken, address router) public {
-        vm.startPrank(msg.sender);
-        ERC20Mock(rewardToken).mint(msg.sender, INITIAL_REWARD_LIQUIDITY);
+        ERC20Mock(rewardToken).mint(address(this), INITIAL_REWARD_LIQUIDITY);
 
         RayFi(rayFi).approve(router, INITIAL_RAYFI_LIQUIDITY);
         ERC20Mock(rewardToken).approve(router, INITIAL_REWARD_LIQUIDITY);
@@ -47,20 +46,21 @@ contract CreateRayFiLiquidityPool is Script {
             INITIAL_REWARD_LIQUIDITY,
             INITIAL_RAYFI_LIQUIDITY,
             INITIAL_REWARD_LIQUIDITY,
-            address(this),
-            block.timestamp
+            msg.sender,
+            block.timestamp + 1000
         );
 
         address pair = IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(rayFi, rewardToken);
         RayFi(rayFi).setIsAutomatedMarketPair(pair, true);
         RayFi(rayFi).setIsExcludedFromRewards(pair, true);
-        vm.stopPrank();
     }
 
     function run() external {
         address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
-        address mostRecentDeployedRewardToken = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
-        
+
+        address mostRecentDeployedRewardToken = block.chainid == 5611
+            ? 0xb4e6031F3a95E737046370a05d9add865c3D9A3B
+            : DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
         address mostRecentDeployedRouter = block.chainid == 5611
             ? 0x0F707e7f6E3C45536cfa13b2186B76D30BaA0108
             : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;

@@ -64,7 +64,10 @@ contract InteractionsTest is Test {
         createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
         vm.stopPrank();
 
-        assert(IUniswapV2Factory(router.factory()).getPair(address(rayFi), address(rewardToken)) != address(0));
+        assert(
+            IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(address(rayFi), address(rewardToken))
+                != address(0)
+        );
     }
 
     function testCreateRayFiUsers() public {
