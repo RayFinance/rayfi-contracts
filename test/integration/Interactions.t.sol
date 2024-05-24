@@ -40,12 +40,9 @@ contract InteractionsTest is Test {
     uint32 public constant GAS_FOR_REWARDS = 1_000_000;
     uint8 constant ACCEPTED_PRECISION_LOSS = 100;
 
-    address FEE_RECEIVER = makeAddr("feeReceiver");
-    address SWAP_RECEIVER = makeAddr("rewardReceiver");
-
     function setUp() public {
         DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi, rewardToken, router) = deployRayFi.run(FEE_RECEIVER, SWAP_RECEIVER);
+        (rayFi, rewardToken, router) = deployRayFi.run();
 
         DeployMockVaults deployMockVaults = new DeployMockVaults();
         (address btcbAddress, address ethAddress, address bnbAddress) = deployMockVaults.run();

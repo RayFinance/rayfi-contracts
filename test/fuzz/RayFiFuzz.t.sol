@@ -10,9 +10,6 @@ import {DeployRayFi} from "../../script/DeployRayFi.s.sol";
 contract Fuzz is Test {
     RayFi rayFi;
 
-    address FEE_RECEIVER = makeAddr("feeReceiver");
-    address SWAP_RECEIVER = makeAddr("rewardReceiver");
-
     uint160 public constant MINIMUM_TOKEN_BALANCE_FOR_REWARDS = 1_000 ether;
     uint8 public constant BUY_FEE = 4;
     uint8 public constant SELL_FEE = 4;
@@ -20,7 +17,7 @@ contract Fuzz is Test {
 
     function setUp() external {
         DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi,,) = deployRayFi.run(FEE_RECEIVER, SWAP_RECEIVER);
+        (rayFi,,) = deployRayFi.run();
 
         vm.startPrank(msg.sender);
         rayFi.setFeeAmounts(BUY_FEE, SELL_FEE);

@@ -5,6 +5,7 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {DeployRayFi} from "../../script/DeployRayFi.s.sol";
+import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {RayFi, Ownable, EnumerableMap} from "../../src/RayFi.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
@@ -16,6 +17,9 @@ contract RayFiTest is Test {
     RayFi rayFi;
     ERC20Mock rewardToken;
     IUniswapV2Router02 router;
+
+    address feeReceiver;
+    address swapReceiver;
 
     uint256 public constant DECIMALS = 18;
     uint256 public constant MAX_SUPPLY = 10_000_000 ether;
@@ -33,15 +37,16 @@ contract RayFiTest is Test {
     string public constant TOKEN_NAME = "RayFi";
     string public constant TOKEN_SYMBOL = "RAYFI";
 
-    address FEE_RECEIVER = makeAddr("feeReceiver");
-    address SWAP_RECEIVER = makeAddr("rewardReceiver");
     address DUMMY_ADDRESS = makeAddr("dummy");
 
     address[USER_COUNT] users;
 
     function setUp() external {
         DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi, rewardToken, router) = deployRayFi.run(FEE_RECEIVER, SWAP_RECEIVER);
+        (rayFi, rewardToken, router) = deployRayFi.run();
+
+        HelperConfig helper = new HelperConfig();
+        (feeReceiver, swapReceiver,,,,,) = helper.activeNetworkConfig();
 
         for (uint256 i; i < USER_COUNT; ++i) {
             users[i] = makeAddr(string(abi.encode("user", i)));
@@ -135,7 +140,7 @@ contract RayFiTest is Test {
         assertEq(address(rayFi.owner()), msg.sender);
         assertEq(rayFi.balanceOf(msg.sender), rayFi.totalSupply());
         assertEq(rayFi.getTotalRewardShares(), MAX_SUPPLY);
-        assertEq(rayFi.getFeeReceiver(), FEE_RECEIVER);
+        assertEq(rayFi.getFeeReceiver(), feeReceiver);
     }
 
     //////////////////////
@@ -148,7 +153,7 @@ contract RayFiTest is Test {
 
         uint256 feeAmount = TRANSFER_AMOUNT * (BUY_FEE + SELL_FEE) / 100;
         assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT - feeAmount);
-        assertEq(rayFi.balanceOf(FEE_RECEIVER), feeAmount);
+        assertEq(rayFi.balanceOf(feeReceiver), feeAmount);
     }
 
     function testTransferWorksAfterPermanentlyDisablingTradingFees() public feesSet {
@@ -168,7 +173,7 @@ contract RayFiTest is Test {
         vm.stopPrank();
 
         assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT);
-        assertEq(rayFi.balanceOf(FEE_RECEIVER), 0);
+        assertEq(rayFi.balanceOf(feeReceiver), 0);
     }
 
     function testTransferFromWorksAndTakesFees() public feesSet {
@@ -179,7 +184,7 @@ contract RayFiTest is Test {
 
         uint256 feeAmount = TRANSFER_AMOUNT * (BUY_FEE + SELL_FEE) / 100;
         assertEq(rayFi.balanceOf(address(this)), TRANSFER_AMOUNT - feeAmount);
-        assertEq(rayFi.balanceOf(FEE_RECEIVER), feeAmount);
+        assertEq(rayFi.balanceOf(feeReceiver), feeAmount);
     }
 
     function testTransfersUpdateShareholdersSet() public minimumBalanceForRewardsSet {
@@ -337,7 +342,7 @@ contract RayFiTest is Test {
         );
 
         assertEq(rewardToken.balanceOf(msg.sender), rewardBalanceBefore + amountOut);
-        assertEq(rayFi.balanceOf(FEE_RECEIVER), feeAmount);
+        assertEq(rayFi.balanceOf(feeReceiver), feeAmount);
 
         // 2. Test buy fee
         path[0] = address(rewardToken);
@@ -350,7 +355,7 @@ contract RayFiTest is Test {
         feeAmount = amountOut * BUY_FEE / 100;
         uint256 adjustedAmountOut = amountOut - feeAmount;
         uint256 rayFiBalanceBefore = rayFi.balanceOf(msg.sender);
-        uint256 feeReceiverRayFiBalanceBefore = rayFi.balanceOf(FEE_RECEIVER);
+        uint256 feeReceiverRayFiBalanceBefore = rayFi.balanceOf(feeReceiver);
 
         rewardToken.approve(address(router), amountIn);
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
@@ -359,7 +364,7 @@ contract RayFiTest is Test {
         vm.stopPrank();
 
         assertEq(rayFi.balanceOf(msg.sender), rayFiBalanceBefore + adjustedAmountOut);
-        assertEq(rayFi.balanceOf(FEE_RECEIVER), feeReceiverRayFiBalanceBefore + feeAmount);
+        assertEq(rayFi.balanceOf(feeReceiver), feeReceiverRayFiBalanceBefore + feeAmount);
     }
 
     /////////////////////
@@ -1019,7 +1024,7 @@ contract RayFiTest is Test {
         Vm.Log[] memory entries = vm.getRecordedLogs();
         assertEq(entries[0].topics[0], keccak256("FeeReceiverUpdated(address,address)"));
         assertEq(entries[0].topics[1], bytes32(uint256(uint160(newFeeReceiver))));
-        assertEq(entries[0].topics[2], bytes32(uint256(uint160(FEE_RECEIVER))));
+        assertEq(entries[0].topics[2], bytes32(uint256(uint160(feeReceiver))));
         assertEq(rayFi.getFeeReceiver(), newFeeReceiver);
 
         // Revert when zero address is passed as input
@@ -1041,7 +1046,7 @@ contract RayFiTest is Test {
         Vm.Log[] memory entries = vm.getRecordedLogs();
         assertEq(entries[0].topics[0], keccak256("SwapReceiverUpdated(address,address)"));
         assertEq(entries[0].topics[1], bytes32(uint256(uint160(newSwapReceiver))));
-        assertEq(entries[0].topics[2], bytes32(uint256(uint160(SWAP_RECEIVER))));
+        assertEq(entries[0].topics[2], bytes32(uint256(uint160(swapReceiver))));
 
         // Revert when zero address is passed as input
         vm.expectRevert(RayFi.RayFi__CannotSetToZeroAddress.selector);

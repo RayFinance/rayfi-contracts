@@ -9,12 +9,10 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 contract DeployRayFi is Script {
-    function run(address feeReceiver, address swapReceiver)
-        external
-        returns (RayFi rayFi, ERC20Mock rewardToken, IUniswapV2Router02 router)
-    {
+    function run() external returns (RayFi rayFi, ERC20Mock rewardToken, IUniswapV2Router02 router) {
         HelperConfig helper = new HelperConfig();
-        (address rewardTokenAddress, address routerAddress,,,) = helper.activeNetworkConfig();
+        (address feeReceiver, address swapReceiver, address rewardTokenAddress, address routerAddress,,,) =
+            helper.activeNetworkConfig();
 
         vm.startBroadcast();
         rayFi = new RayFi(routerAddress, rewardTokenAddress, swapReceiver, feeReceiver);

@@ -17,9 +17,6 @@ contract Invariants is StdInvariant, Test {
     ERC20Mock rewardToken;
     IUniswapV2Router02 router;
 
-    address FEE_RECEIVER = makeAddr("feeReceiver");
-    address DIVIDEND_RECEIVER = makeAddr("dividendReceiver");
-
     uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
     uint256 public constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
     uint256 constant USDT_LIQUIDITY = 1_000_000 ether;
@@ -32,7 +29,7 @@ contract Invariants is StdInvariant, Test {
 
     function setUp() external {
         DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi, rewardToken, router) = deployRayFi.run(FEE_RECEIVER, DIVIDEND_RECEIVER);
+        (rayFi, rewardToken, router) = deployRayFi.run();
 
         DeployMockVaults deployMockVaults = new DeployMockVaults();
         (address btcb, address eth, address bnb) = deployMockVaults.run();

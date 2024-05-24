@@ -9,7 +9,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 contract DeployMockVaults is Script {
     function run() external returns (address btcb, address eth, address bnb) {
         HelperConfig helper = new HelperConfig();
-        (,, btcb, eth, bnb) = helper.activeNetworkConfig();
+        (,,,, btcb, eth, bnb) = helper.activeNetworkConfig();
     }
 
     // Excludes contract from coverage report
