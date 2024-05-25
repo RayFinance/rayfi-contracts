@@ -34,23 +34,22 @@ contract CreateRayFiLiquidityPool is Script {
     uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
     uint256 constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
 
-    modifier prankOwner(address rayFiAddress) {
-        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
-        if (!isOwner) {
-            vm.startPrank(tx.origin);
+    modifier prankOwner(address rayFiAddress, bool isPrank) {
+        if (isPrank) {
+            vm.startPrank(RayFi(rayFiAddress).owner());
         }
         _;
-        if (!isOwner) {
+        if (isPrank) {
             vm.stopPrank();
         }
     }
 
-    function createRayFiLiquidityPool(address rayFiAddress, address rewardToken, address router)
+    function createRayFiLiquidityPool(address rayFiAddress, address rewardToken, address router, bool isPrank)
         public
-        prankOwner(rayFiAddress)
+        prankOwner(rayFiAddress, isPrank)
     {
         RayFi rayFi = RayFi(rayFiAddress);
-        ERC20Mock(rewardToken).mint(address(this), INITIAL_REWARD_LIQUIDITY);
+        ERC20Mock(rewardToken).mint(rayFi.owner(), INITIAL_REWARD_LIQUIDITY);
 
         rayFi.approve(router, INITIAL_RAYFI_LIQUIDITY);
         ERC20Mock(rewardToken).approve(router, INITIAL_REWARD_LIQUIDITY);
@@ -62,7 +61,7 @@ contract CreateRayFiLiquidityPool is Script {
             INITIAL_REWARD_LIQUIDITY,
             INITIAL_RAYFI_LIQUIDITY,
             INITIAL_REWARD_LIQUIDITY,
-            msg.sender,
+            rayFi.owner(),
             block.timestamp + 1000
         );
 
@@ -85,7 +84,9 @@ contract CreateRayFiLiquidityPool is Script {
         }
 
         vm.startBroadcast();
-        createRayFiLiquidityPool(mostRecentDeployedRayFi, mostRecentDeployedRewardToken, mostRecentDeployedRouter);
+        createRayFiLiquidityPool(
+            mostRecentDeployedRayFi, mostRecentDeployedRewardToken, mostRecentDeployedRouter, false
+        );
         vm.stopBroadcast();
     }
 
@@ -97,18 +98,17 @@ contract CreateRayFiUsers is Script {
     uint256 constant USER_COUNT = 100;
     uint256 constant USER_BALANCE = 10_000 ether;
 
-    modifier prankOwner(address rayFiAddress) {
-        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
-        if (!isOwner) {
-            vm.startPrank(tx.origin);
+    modifier prankOwner(address rayFiAddress, bool isPrank) {
+        if (isPrank) {
+            vm.startPrank(RayFi(rayFiAddress).owner());
         }
         _;
-        if (!isOwner) {
+        if (isPrank) {
             vm.stopPrank();
         }
     }
 
-    function createRayFiUsers(address rayFiAddress) public prankOwner(rayFiAddress) {
+    function createRayFiUsers(address rayFiAddress, bool isPrank) public prankOwner(rayFiAddress, isPrank) {
         RayFi rayFi = RayFi(rayFiAddress);
         address[100] memory users;
         for (uint256 i = 0; i < USER_COUNT; i++) {
@@ -120,7 +120,7 @@ contract CreateRayFiUsers is Script {
     function run() external {
         address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
         vm.startBroadcast();
-        createRayFiUsers(mostRecentDeployed);
+        createRayFiUsers(mostRecentDeployed, false);
         vm.stopBroadcast();
     }
 
@@ -178,13 +178,12 @@ contract AddMockRayFiVaults is Script {
     uint256 constant ETH_LIQUIDITY = 1_000 ether;
     uint256 constant BNB_LIQUIDITY = 10_000 ether;
 
-    modifier prankOwner(address rayFiAddress) {
-        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
-        if (!isOwner) {
-            vm.startPrank(tx.origin);
+    modifier prankOwner(address rayFiAddress, bool isPrank) {
+        if (isPrank) {
+            vm.startPrank(RayFi(rayFiAddress).owner());
         }
         _;
-        if (!isOwner) {
+        if (isPrank) {
             vm.stopPrank();
         }
     }
@@ -195,8 +194,9 @@ contract AddMockRayFiVaults is Script {
         address mockBTCB,
         address mockETH,
         address mockBNB,
-        address routerAddress
-    ) public prankOwner(rayFiAddress) {
+        address routerAddress,
+        bool isPrank
+    ) public prankOwner(rayFiAddress, isPrank) {
         RayFi rayFi = RayFi(rayFiAddress);
         rayFi.addVault(mockBTCB);
         rayFi.addVault(mockETH);
@@ -206,7 +206,7 @@ contract AddMockRayFiVaults is Script {
         address[3] memory vaultTokens = [mockBTCB, mockETH, mockBNB];
         uint256[3] memory vaultLiquidity = [BTCB_LIQUIDITY, ETH_LIQUIDITY, BNB_LIQUIDITY];
         for (uint256 i; i < 3; i++) {
-            ERC20Mock(vaultTokens[i]).mint(msg.sender, vaultLiquidity[i]);
+            ERC20Mock(vaultTokens[i]).mint(rayFi.owner(), vaultLiquidity[i]);
 
             ERC20Mock(vaultTokens[i]).approve(routerAddress, vaultLiquidity[i]);
             ERC20Mock(mockUSDT).approve(routerAddress, USDT_LIQUIDITY);
@@ -218,7 +218,7 @@ contract AddMockRayFiVaults is Script {
                 vaultLiquidity[i],
                 USDT_LIQUIDITY,
                 vaultLiquidity[i],
-                msg.sender,
+                rayFi.owner(),
                 block.timestamp + 1000
             );
         }
@@ -246,9 +246,9 @@ contract AddMockRayFiVaults is Script {
             mostRecentDeployedMockBTCB,
             mostRecentDeployedMockETH,
             mostRecentDeployedMockBNB,
-            mostRecentDeployedRouter
+            mostRecentDeployedRouter,
+            false
         );
-
         vm.stopBroadcast();
     }
 
@@ -319,18 +319,7 @@ contract PartiallyStakeRayFiUsersMultipleVaults is Script {
 }
 
 contract DistributeRewardsStateless is Script {
-    modifier prankOwner(address rayFiAddress) {
-        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
-        if (!isOwner) {
-            vm.startPrank(tx.origin);
-        }
-        _;
-        if (!isOwner) {
-            vm.stopPrank();
-        }
-    }
-
-    function distributeRewardsStateless(address rayFiAddress) public prankOwner(rayFiAddress) {
+    function distributeRewardsStateless(address rayFiAddress) public {
         RayFi rayFi = RayFi(rayFiAddress);
         rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
@@ -351,18 +340,7 @@ contract DistributeRewardsStateful is Script {
     uint256 constant MAX_ITERATIONS = 10;
     uint32 constant GAS_FOR_REWARDS = 10_000_000;
 
-    modifier prankOwner(address rayFiAddress) {
-        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
-        if (!isOwner) {
-            vm.startPrank(tx.origin);
-        }
-        _;
-        if (!isOwner) {
-            vm.stopPrank();
-        }
-    }
-
-    function distributeRewardsStateful(address rayFiAddress) public prankOwner(rayFiAddress) {
+    function distributeRewardsStateful(address rayFiAddress) public {
         RayFi rayFi = RayFi(rayFiAddress);
         rayFi.snapshot();
         for (uint256 i; i < MAX_ITERATIONS; i++) {

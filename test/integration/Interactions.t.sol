@@ -61,7 +61,9 @@ contract InteractionsTest is Test {
     }
 
     function testCreateRayFiLiquidityPool() public {
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
+        );
 
         assert(
             IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(address(rayFi), address(rewardToken))
@@ -70,20 +72,20 @@ contract InteractionsTest is Test {
     }
 
     function testCreateRayFiUsers() public {
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
 
         assertEq(rayFi.getShareholders().length, USER_COUNT);
     }
 
     function testFullyStakeRayFiUsersSingleVault() public {
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new FullyStakeRayFiUsersSingleVault().fullyStakeRayFiUsers(address(rayFi));
 
         assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedShares());
     }
 
     function testPartiallyStakeRayFiUsersSingleVault() public {
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new PartiallyStakeRayFiUsersSingleVault().partiallyStakeRayFiUsers(address(rayFi));
 
         assertEq(rayFi.getTotalRewardShares() / 2, rayFi.getTotalStakedShares());
@@ -91,7 +93,7 @@ contract InteractionsTest is Test {
 
     function testAddMockRayFiVaults() public {
         new AddMockRayFiVaults().addMockRayFiVaults(
-            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router), true
         );
 
         vm.startPrank(msg.sender);
@@ -103,9 +105,9 @@ contract InteractionsTest is Test {
     }
 
     function testFullyStakeRayFiUsersMultipleVaults() public {
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new AddMockRayFiVaults().addMockRayFiVaults(
-            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router), true
         );
         new FullyStakeRayFiUsersMultipleVaults().fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
@@ -113,9 +115,9 @@ contract InteractionsTest is Test {
     }
 
     function testPartiallyStakeRayFiUsersMultipleVaults() public {
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new AddMockRayFiVaults().addMockRayFiVaults(
-            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router), true
         );
         new PartiallyStakeRayFiUsersMultipleVaults().partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
@@ -129,7 +131,7 @@ contract InteractionsTest is Test {
 
     function testDistributionNoVaults() public {
         new FundRayFi().fundRayFi(address(rayFi));
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
 
         vm.startPrank(msg.sender);
         rayFi.snapshot();
@@ -144,8 +146,10 @@ contract InteractionsTest is Test {
 
     function testDistributionOnlySingleVault() public {
         new FundRayFi().fundRayFi(address(rayFi));
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
+        );
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new FullyStakeRayFiUsersSingleVault().fullyStakeRayFiUsers(address(rayFi));
 
         address[] memory users = rayFi.getShareholders();
@@ -170,8 +174,10 @@ contract InteractionsTest is Test {
 
     function testMixedDistributionSingleVault() public {
         new FundRayFi().fundRayFi(address(rayFi));
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
+        );
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new PartiallyStakeRayFiUsersSingleVault().partiallyStakeRayFiUsers(address(rayFi));
 
         address[] memory users = rayFi.getShareholders();
@@ -199,11 +205,13 @@ contract InteractionsTest is Test {
 
     function testDistributionOnlyMultipleVaults() public {
         new FundRayFi().fundRayFi(address(rayFi));
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        new AddMockRayFiVaults().addMockRayFiVaults(
-            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
         );
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new AddMockRayFiVaults().addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router), true
+        );
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new FullyStakeRayFiUsersMultipleVaults().fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         address[] memory users = rayFi.getShareholders();
@@ -234,11 +242,13 @@ contract InteractionsTest is Test {
 
     function testMixedDistributionMultipleVaultsStateless() public {
         new FundRayFi().fundRayFi(address(rayFi));
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        new AddMockRayFiVaults().addMockRayFiVaults(
-            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
         );
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new AddMockRayFiVaults().addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router), true
+        );
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new PartiallyStakeRayFiUsersMultipleVaults().partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         address[] memory users = rayFi.getShareholders();
@@ -278,11 +288,13 @@ contract InteractionsTest is Test {
 
     function testMixedDistributionMultipleVaultsStateful() public {
         new FundRayFi().fundRayFi(address(rayFi));
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        new AddMockRayFiVaults().addMockRayFiVaults(
-            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
         );
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new AddMockRayFiVaults().addMockRayFiVaults(
+            address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router), true
+        );
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
         new PartiallyStakeRayFiUsersMultipleVaults().partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         address[] memory users = rayFi.getShareholders();
@@ -326,8 +338,10 @@ contract InteractionsTest is Test {
 
     function testMultipleDistributionsNoVaultsStateful() public {
         FundRayFi fundRayFi = new FundRayFi();
-        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(
+            address(rayFi), address(rewardToken), address(router), true
+        );
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi), true);
 
         address[] memory users = rayFi.getShareholders();
         uint256[USER_COUNT + 1] memory balancesBefore;

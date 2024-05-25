@@ -786,7 +786,7 @@ contract RayFi is ERC20, Ownable {
     function getBalanceOfAtSnapshot(address user, uint96 snapshotId) external view returns (uint256) {
         return s_balancesSnapshots[user].upperLookupRecent(snapshotId);
     }
-    
+
     /**
      * @notice Get the vault balance of a user at a specific snapshot
      * @param vaultToken The address of the vault token
