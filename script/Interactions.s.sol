@@ -5,6 +5,7 @@ pragma solidity ^0.8.20;
 import {Script, console} from "forge-std/Script.sol";
 import {DevOpsTools} from "lib/foundry-devops/src/DevOpsTools.sol";
 import {RayFi} from "../src/RayFi.sol";
+import {HelperConfig} from "./HelperConfig.s.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
@@ -44,7 +45,10 @@ contract CreateRayFiLiquidityPool is Script {
         }
     }
 
-    function createRayFiLiquidityPool(address rayFiAddress, address rewardToken, address router) public prankOwner(rayFiAddress) {
+    function createRayFiLiquidityPool(address rayFiAddress, address rewardToken, address router)
+        public
+        prankOwner(rayFiAddress)
+    {
         RayFi rayFi = RayFi(rayFiAddress);
         ERC20Mock(rewardToken).mint(address(this), INITIAL_REWARD_LIQUIDITY);
 
@@ -70,12 +74,15 @@ contract CreateRayFiLiquidityPool is Script {
     function run() external {
         address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
 
-        address mostRecentDeployedRewardToken = block.chainid == 5611
-            ? 0xb4e6031F3a95E737046370a05d9add865c3D9A3B
-            : DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
-        address mostRecentDeployedRouter = block.chainid == 5611
-            ? 0x0F707e7f6E3C45536cfa13b2186B76D30BaA0108
-            : 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+        address mostRecentDeployedRewardToken;
+        address mostRecentDeployedRouter;
+        if (block.chainid == 5611) {
+            HelperConfig helperConfig = new HelperConfig();
+            (,, mostRecentDeployedRewardToken, mostRecentDeployedRouter,,,) = helperConfig.activeNetworkConfig();
+        } else {
+            mostRecentDeployedRewardToken = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
+        mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+        }
 
         vm.startBroadcast();
         createRayFiLiquidityPool(mostRecentDeployedRayFi, mostRecentDeployedRewardToken, mostRecentDeployedRouter);
@@ -202,7 +209,7 @@ contract AddMockRayFiVaults is Script {
                 USDT_LIQUIDITY,
                 vaultLiquidity[i],
                 msg.sender,
-                block.timestamp
+                block.timestamp + 1000
             );
         }
             }
@@ -214,7 +221,13 @@ contract AddMockRayFiVaults is Script {
         address mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
         address mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
 
-        address mostRecentDeployedRouter = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+        address mostRecentDeployedRouter;
+        if (block.chainid == 5611) {
+            HelperConfig helperConfig = new HelperConfig();
+            (,,, mostRecentDeployedRouter,,,) = helperConfig.activeNetworkConfig();
+        } else {
+            mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+        }
 
         vm.startBroadcast();
         addMockRayFiVaults(
