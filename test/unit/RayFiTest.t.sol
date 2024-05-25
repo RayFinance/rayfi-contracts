@@ -250,6 +250,16 @@ contract RayFiTest is Test {
         rayFi.retrieveERC20(address(rayFi), address(this), TRANSFER_AMOUNT);
     }
 
+    function testCannotRetrieveToZeroAddress() public {
+        vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__CannotSetToZeroAddress.selector));
+        vm.prank(msg.sender);
+        rayFi.retrieveERC20(address(rewardToken), address(0), TRANSFER_AMOUNT);
+
+        vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__CannotSetToZeroAddress.selector));
+        vm.prank(msg.sender);
+        rayFi.retrieveBNB(address(0), TRANSFER_AMOUNT);
+    }
+
     function testCannotTransferToRayFiContract() public {
         vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__CannotManuallySendRayFiToTheContract.selector));
         vm.prank(msg.sender);

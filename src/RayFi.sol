@@ -550,6 +550,8 @@ contract RayFi is ERC20, Ownable {
     function retrieveERC20(address token, address to, uint256 value) external onlyOwner {
         if (token == address(this)) {
             revert RayFi__CannotRetrieveRayFi();
+        } else if (to == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
         }
         ERC20(token).transfer(to, value);
     }
@@ -560,6 +562,9 @@ contract RayFi is ERC20, Ownable {
      * @param value The amount of BNB to retrieve
      */
     function retrieveBNB(address to, uint256 value) external onlyOwner {
+        if (to == address(0)) {
+            revert RayFi__CannotSetToZeroAddress();
+        }
         payable(to).transfer(value);
     }
 
