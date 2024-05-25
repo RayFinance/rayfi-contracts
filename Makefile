@@ -16,7 +16,7 @@ clean  :; forge clean
 # Remove modules
 remove :; rm -rf .gitmodules && rm -rf .git/modules/* && rm -rf lib && touch .gitmodules && git add . && git commit -m "modules"
 
-install :; forge install cyfrin/foundry-devops --no-commit && forge install openzeppelin/openzeppelin-contracts --no-commit && forge install uniswap/v2-core --no-commit && forge install uniswap/v2-periphery --no-commit && forge install uniswap/solidity-lib --no-commit 
+install :; forge install openzeppelin/openzeppelin-contracts --no-commit && forge install uniswap/v2-core --no-commit && forge install uniswap/v2-periphery --no-commit && forge install uniswap/solidity-lib --no-commit 
 
 # Update Dependencies
 update:; forge update
