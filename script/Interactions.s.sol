@@ -226,17 +226,29 @@ contract AddMockRayFiVaults is Script {
 
     function run() external {
         address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
-        address mostRecentDeployedMockUSDT = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
-        address mostRecentDeployedMockBTCB = DevOpsTools.get_most_recent_deployment("MockBTCB", block.chainid);
-        address mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
-        address mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
 
+        address mostRecentDeployedMockUSDT;
         address mostRecentDeployedRouter;
+        address mostRecentDeployedMockBTCB;
+        address mostRecentDeployedMockETH;
+        address mostRecentDeployedMockBNB;
         if (block.chainid == 5611) {
             HelperConfig helperConfig = new HelperConfig();
-            (,,, mostRecentDeployedRouter,,,) = helperConfig.activeNetworkConfig();
+            (
+                ,
+                ,
+                mostRecentDeployedMockUSDT,
+                mostRecentDeployedRouter,
+                mostRecentDeployedMockBTCB,
+                mostRecentDeployedMockETH,
+                mostRecentDeployedMockBNB
+            ) = helperConfig.activeNetworkConfig();
         } else {
+            mostRecentDeployedMockUSDT = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
             mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+            mostRecentDeployedMockBTCB = DevOpsTools.get_most_recent_deployment("MockBTCB", block.chainid);
+            mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
+            mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
         }
 
         vm.startBroadcast();
