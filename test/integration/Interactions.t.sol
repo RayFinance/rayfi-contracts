@@ -59,11 +59,8 @@ contract InteractionsTest is Test {
     }
 
     function testCreateRayFiLiquidityPool() public {
-        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
-        vm.startPrank(msg.sender);
-        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        vm.stopPrank();
-
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        
         assert(
             IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(address(rayFi), address(rewardToken))
                 != address(0)
@@ -186,10 +183,7 @@ contract InteractionsTest is Test {
     function testDistributionOnlySingleVault() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
-
-        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
-        vm.startPrank(msg.sender);
-        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
 
         CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
         vm.startPrank(msg.sender);
@@ -221,10 +215,7 @@ contract InteractionsTest is Test {
     function testMixedDistributionSingleVault() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
-
-        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
-        vm.startPrank(msg.sender);
-        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
 
         CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
         vm.startPrank(msg.sender);
@@ -260,10 +251,7 @@ contract InteractionsTest is Test {
     function testDistributionOnlyMultipleVaults() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
-
-        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
-        vm.startPrank(msg.sender);
-        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
 
         AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
         vm.startPrank(msg.sender);
@@ -308,10 +296,7 @@ contract InteractionsTest is Test {
     function testMixedDistributionMultipleVaultsStateless() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
-
-        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
-        vm.startPrank(msg.sender);
-        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
 
         AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
         vm.startPrank(msg.sender);
@@ -366,10 +351,7 @@ contract InteractionsTest is Test {
     function testMixedDistributionMultipleVaultsStateful() public {
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
-
-        CreateRayFiLiquidityPool createRayFiLiquidityPool = new CreateRayFiLiquidityPool();
-        vm.startPrank(msg.sender);
-        createRayFiLiquidityPool.createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
 
         AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
         vm.startPrank(msg.sender);
@@ -427,11 +409,7 @@ contract InteractionsTest is Test {
 
     function testMultipleDistributionsNoVaultsStateful() public {
         FundRayFi fundRayFi = new FundRayFi();
-
-        vm.startPrank(msg.sender);
         new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-
-        vm.startPrank(msg.sender);
         new CreateRayFiUsers().createRayFiUsers(address(rayFi));
 
         address[] memory users = rayFi.getShareholders();

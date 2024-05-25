@@ -33,14 +33,26 @@ contract CreateRayFiLiquidityPool is Script {
     uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
     uint256 constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
 
-    function createRayFiLiquidityPool(address rayFi, address rewardToken, address router) public {
+    modifier prankOwner(address rayFiAddress) {
+        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
+        if (!isOwner) {
+            vm.startPrank(tx.origin);
+        }
+        _;
+        if (!isOwner) {
+            vm.stopPrank();
+        }
+    }
+
+    function createRayFiLiquidityPool(address rayFiAddress, address rewardToken, address router) public prankOwner(rayFiAddress) {
+        RayFi rayFi = RayFi(rayFiAddress);
         ERC20Mock(rewardToken).mint(address(this), INITIAL_REWARD_LIQUIDITY);
 
-        RayFi(rayFi).approve(router, INITIAL_RAYFI_LIQUIDITY);
+        rayFi.approve(router, INITIAL_RAYFI_LIQUIDITY);
         ERC20Mock(rewardToken).approve(router, INITIAL_REWARD_LIQUIDITY);
 
         IUniswapV2Router02(router).addLiquidity(
-            rayFi,
+            rayFiAddress,
             rewardToken,
             INITIAL_RAYFI_LIQUIDITY,
             INITIAL_REWARD_LIQUIDITY,
@@ -50,9 +62,9 @@ contract CreateRayFiLiquidityPool is Script {
             block.timestamp + 1000
         );
 
-        address pair = IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(rayFi, rewardToken);
-        RayFi(rayFi).setIsAutomatedMarketPair(pair, true);
-        RayFi(rayFi).setIsExcludedFromRewards(pair, true);
+        address pair = IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(rayFiAddress, rewardToken);
+        rayFi.setIsAutomatedMarketPair(pair, true);
+        rayFi.setIsExcludedFromRewards(pair, true);
     }
 
     function run() external {
