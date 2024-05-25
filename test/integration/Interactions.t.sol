@@ -24,10 +24,11 @@ contract InteractionsTest is Test {
     RayFi rayFi;
     ERC20Mock rewardToken;
     IUniswapV2Router02 router;
-HelperConfig helperConfig;
+    HelperConfig helperConfig;
     ERC20Mock btcb;
     ERC20Mock eth;
     ERC20Mock bnb;
+    address[3] vaultTokens;
 
     uint256 constant FUND_AMOUNT = 10_000 ether;
     uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
@@ -43,25 +44,25 @@ HelperConfig helperConfig;
 
     function setUp() public {
         (rayFi, rewardToken, router, helperConfig) = new DeployRayFi().run();
-vm.prank(msg.sender);
+        vm.prank(msg.sender);
         rayFi.setIsExcludedFromRewards(msg.sender, true);
 
         (,,,, address btcbAddress, address ethAddress, address bnbAddress) = helperConfig.activeNetworkConfig();
         btcb = ERC20Mock(btcbAddress);
         eth = ERC20Mock(ethAddress);
         bnb = ERC20Mock(bnbAddress);
+        vaultTokens = [btcbAddress, ethAddress, bnbAddress];
     }
 
     function testFundRayFi() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
+        new FundRayFi().fundRayFi(address(rayFi));
 
         assertEq(rewardToken.balanceOf(address(rayFi)), FUND_AMOUNT);
     }
 
     function testCreateRayFiLiquidityPool() public {
         new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-        
+
         assert(
             IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(address(rayFi), address(rewardToken))
                 != address(0)
@@ -69,35 +70,21 @@ vm.prank(msg.sender);
     }
 
     function testCreateRayFiUsers() public {
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-        vm.stopPrank();
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
 
-        assertEq(rayFi.getShareholders().length, createRayFiUsers.USER_COUNT() + 1);
+        assertEq(rayFi.getShareholders().length, USER_COUNT);
     }
 
     function testFullyStakeRayFiUsersSingleVault() public {
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-        vm.stopPrank();
-
-        FullyStakeRayFiUsersSingleVault fullyStakeRayFiUsersSingleVault = new FullyStakeRayFiUsersSingleVault();
-        fullyStakeRayFiUsersSingleVault.fullyStakeRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new FullyStakeRayFiUsersSingleVault().fullyStakeRayFiUsers(address(rayFi));
 
         assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedShares());
     }
 
     function testPartiallyStakeRayFiUsersSingleVault() public {
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-        vm.stopPrank();
-
-        PartiallyStakeRayFiUsersSingleVault partiallyStakeRayFiUsersSingleVault =
-            new PartiallyStakeRayFiUsersSingleVault();
-        partiallyStakeRayFiUsersSingleVault.partiallyStakeRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new PartiallyStakeRayFiUsersSingleVault().partiallyStakeRayFiUsers(address(rayFi));
 
         assertEq(rayFi.getTotalRewardShares() / 2, rayFi.getTotalStakedShares());
     }
@@ -107,58 +94,42 @@ vm.prank(msg.sender);
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 
-        address[4] memory vaults = [address(rayFi), address(btcb), address(eth), address(bnb)];
         vm.startPrank(msg.sender);
-        for (uint256 i; i < vaults.length; ++i) {
-            vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__VaultAlreadyExists.selector, vaults[i]));
-            rayFi.addVault(vaults[i]);
+        for (uint256 i; i < vaultTokens.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__VaultAlreadyExists.selector, vaultTokens[i]));
+            rayFi.addVault(vaultTokens[i]);
         }
         vm.stopPrank();
     }
 
     function testFullyStakeRayFiUsersMultipleVaults() public {
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
         new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
-
-        FullyStakeRayFiUsersMultipleVaults fullyStakeRayFiUsersMultipleVaults = new FullyStakeRayFiUsersMultipleVaults();
-        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
-        fullyStakeRayFiUsersMultipleVaults.fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+        new FullyStakeRayFiUsersMultipleVaults().fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         assertEq(rayFi.getTotalRewardShares(), rayFi.getTotalStakedShares());
     }
 
     function testPartiallyStakeRayFiUsersMultipleVaults() public {
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
         new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
-
-        PartiallyStakeRayFiUsersMultipleVaults partiallyStakeRayFiUsersMultipleVaults =
-            new PartiallyStakeRayFiUsersMultipleVaults();
-        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
-        partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+        new PartiallyStakeRayFiUsersMultipleVaults().partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         assert(
             rayFi.getTotalStakedShares()
-                >= rayFi.getTotalRewardShares() / 2 - ACCEPTED_PRECISION_LOSS * USER_COUNT * vaults.length
+                >= rayFi.getTotalRewardShares() / 2 - ACCEPTED_PRECISION_LOSS * USER_COUNT * vaultTokens.length
                 && rayFi.getTotalStakedShares()
-                    <= rayFi.getTotalRewardShares() / 2 + ACCEPTED_PRECISION_LOSS * USER_COUNT * vaults.length
+                    <= rayFi.getTotalRewardShares() / 2 + ACCEPTED_PRECISION_LOSS * USER_COUNT * vaultTokens.length
         );
     }
 
     function testDistributionNoVaults() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
-
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
+        new FundRayFi().fundRayFi(address(rayFi));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
 
         vm.startPrank(msg.sender);
         rayFi.snapshot();
@@ -172,16 +143,10 @@ vm.prank(msg.sender);
     }
 
     function testDistributionOnlySingleVault() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
-new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-
-        FullyStakeRayFiUsersSingleVault fullyStakeRayFiUsersSingleVault = new FullyStakeRayFiUsersSingleVault();
-        fullyStakeRayFiUsersSingleVault.fullyStakeRayFiUsers(address(rayFi));
+        new FundRayFi().fundRayFi(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new FullyStakeRayFiUsersSingleVault().fullyStakeRayFiUsers(address(rayFi));
 
         address[] memory users = rayFi.getShareholders();
         uint256[] memory stakedBalancesBefore = new uint256[](users.length);
@@ -204,17 +169,10 @@ new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(
     }
 
     function testMixedDistributionSingleVault() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
-new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-
-        PartiallyStakeRayFiUsersSingleVault partiallyStakeRayFiUsersSingleVault =
-            new PartiallyStakeRayFiUsersSingleVault();
-        partiallyStakeRayFiUsersSingleVault.partiallyStakeRayFiUsers(address(rayFi));
+        new FundRayFi().fundRayFi(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new PartiallyStakeRayFiUsersSingleVault().partiallyStakeRayFiUsers(address(rayFi));
 
         address[] memory users = rayFi.getShareholders();
         uint256[] memory stakedBalancesBefore = new uint256[](users.length);
@@ -240,20 +198,13 @@ new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(
     }
 
     function testDistributionOnlyMultipleVaults() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
-new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-new AddMockRayFiVaults().addMockRayFiVaults(
+        new FundRayFi().fundRayFi(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
-
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-
-        FullyStakeRayFiUsersMultipleVaults fullyStakeRayFiUsersMultipleVaults = new FullyStakeRayFiUsersMultipleVaults();
-        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
-        fullyStakeRayFiUsersMultipleVaults.fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new FullyStakeRayFiUsersMultipleVaults().fullyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         address[] memory users = rayFi.getShareholders();
         uint256[] memory stakedBalancesBefore = new uint256[](users.length);
@@ -282,21 +233,13 @@ new AddMockRayFiVaults().addMockRayFiVaults(
     }
 
     function testMixedDistributionMultipleVaultsStateless() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
-new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-new AddMockRayFiVaults().addMockRayFiVaults(
+        new FundRayFi().fundRayFi(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
-
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-
-        PartiallyStakeRayFiUsersMultipleVaults partiallyStakeRayFiUsersMultipleVaults =
-            new PartiallyStakeRayFiUsersMultipleVaults();
-        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
-        partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new PartiallyStakeRayFiUsersMultipleVaults().partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         address[] memory users = rayFi.getShareholders();
         uint256[] memory stakedBalancesBefore = new uint256[](users.length);
@@ -334,21 +277,13 @@ new AddMockRayFiVaults().addMockRayFiVaults(
     }
 
     function testMixedDistributionMultipleVaultsStateful() public {
-        FundRayFi fundRayFi = new FundRayFi();
-        fundRayFi.fundRayFi(address(rayFi));
-new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-new AddMockRayFiVaults().addMockRayFiVaults(
+        new FundRayFi().fundRayFi(address(rayFi));
+        new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
+        new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
-
-        CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
-        vm.startPrank(msg.sender);
-        createRayFiUsers.createRayFiUsers(address(rayFi));
-
-        PartiallyStakeRayFiUsersMultipleVaults partiallyStakeRayFiUsersMultipleVaults =
-            new PartiallyStakeRayFiUsersMultipleVaults();
-        address[3] memory vaults = [address(btcb), address(eth), address(bnb)];
-        partiallyStakeRayFiUsersMultipleVaults.partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaults);
+        new CreateRayFiUsers().createRayFiUsers(address(rayFi));
+        new PartiallyStakeRayFiUsersMultipleVaults().partiallyStakeRayFiUsersMultipleVaults(address(rayFi), vaultTokens);
 
         address[] memory users = rayFi.getShareholders();
         uint256[] memory stakedBalancesBefore = new uint256[](users.length);

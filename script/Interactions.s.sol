@@ -81,7 +81,7 @@ contract CreateRayFiLiquidityPool is Script {
             (,, mostRecentDeployedRewardToken, mostRecentDeployedRouter,,,) = helperConfig.activeNetworkConfig();
         } else {
             mostRecentDeployedRewardToken = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
-        mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+            mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
         }
 
         vm.startBroadcast();
@@ -94,16 +94,26 @@ contract CreateRayFiLiquidityPool is Script {
 }
 
 contract CreateRayFiUsers is Script {
-    uint256 public constant USER_COUNT = 100;
+    uint256 constant USER_COUNT = 100;
+    uint256 constant USER_BALANCE = 10_000 ether;
 
-    function createRayFiUsers(address rayFiAddress) public {
+    modifier prankOwner(address rayFiAddress) {
+        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
+        if (!isOwner) {
+            vm.startPrank(tx.origin);
+        }
+        _;
+        if (!isOwner) {
+            vm.stopPrank();
+        }
+    }
+
+    function createRayFiUsers(address rayFiAddress) public prankOwner(rayFiAddress) {
         RayFi rayFi = RayFi(rayFiAddress);
-        vm.startPrank(msg.sender);
         address[100] memory users;
-        uint256 balance = rayFi.balanceOf(msg.sender);
         for (uint256 i = 0; i < USER_COUNT; i++) {
             users[i] = address(uint160(uint256(keccak256(abi.encodePacked(i + 1)))));
-            rayFi.transfer(users[i], balance / (USER_COUNT + 1));
+            rayFi.transfer(users[i], USER_BALANCE);
         }
     }
 
@@ -163,7 +173,7 @@ contract PartiallyStakeRayFiUsersSingleVault is Script {
 }
 
 contract AddMockRayFiVaults is Script {
-        uint256 constant USDT_LIQUIDITY = 1_000_000 ether;
+    uint256 constant USDT_LIQUIDITY = 1_000_000 ether;
     uint256 constant BTCB_LIQUIDITY = 100 ether;
     uint256 constant ETH_LIQUIDITY = 1_000 ether;
     uint256 constant BNB_LIQUIDITY = 10_000 ether;
@@ -188,7 +198,7 @@ contract AddMockRayFiVaults is Script {
         address routerAddress
     ) public prankOwner(rayFiAddress) {
         RayFi rayFi = RayFi(rayFiAddress);
-                rayFi.addVault(mockBTCB);
+        rayFi.addVault(mockBTCB);
         rayFi.addVault(mockETH);
         rayFi.addVault(mockBNB);
 
@@ -212,7 +222,7 @@ contract AddMockRayFiVaults is Script {
                 block.timestamp + 1000
             );
         }
-            }
+    }
 
     function run() external {
         address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
@@ -309,7 +319,6 @@ contract PartiallyStakeRayFiUsersMultipleVaults is Script {
 }
 
 contract DistributeRewardsStateless is Script {
-
     modifier prankOwner(address rayFiAddress) {
         bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
         if (!isOwner) {
