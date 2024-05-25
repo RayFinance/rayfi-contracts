@@ -41,6 +41,7 @@ ifeq ($(findstring --network opbnb-testnet,$(ARGS)),--network opbnb-testnet)
 	--priority-gas-price 100000 \
 	--with-gas-price 100000 \
 	--broadcast \
+	--account $(OPBNB_TESTNET_ACCOUNT) \
 	--password $(PASSWORD) \
 	-vvvv
 endif
@@ -50,6 +51,12 @@ deploy:
 
 create-pair:
 	@forge script script/Interactions.s.sol:CreateRayFiLiquidityPool $(NETWORK_ARGS)
+
+create-users:
+	@forge script script/Interactions.s.sol:CreateRayFiUsers $(NETWORK_ARGS)
+
+create-vaults:
+	@forge script script/Interactions.s.sol:AddMockRayFiVaults $(NETWORK_ARGS)
 
 fund:
 	@forge script script/Interactions.s.sol:FundRayFi $(NETWORK_ARGS)
