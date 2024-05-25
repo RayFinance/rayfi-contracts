@@ -102,9 +102,7 @@ contract InteractionsTest is Test {
     }
 
     function testAddMockRayFiVaults() public {
-        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
-        vm.startPrank(msg.sender);
-        addMockRayFiVaults.addMockRayFiVaults(
+        new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 
@@ -121,11 +119,7 @@ contract InteractionsTest is Test {
         CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
         vm.startPrank(msg.sender);
         createRayFiUsers.createRayFiUsers(address(rayFi));
-        vm.stopPrank();
-
-        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
-        vm.startPrank(msg.sender);
-        addMockRayFiVaults.addMockRayFiVaults(
+        new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 
@@ -140,11 +134,7 @@ contract InteractionsTest is Test {
         CreateRayFiUsers createRayFiUsers = new CreateRayFiUsers();
         vm.startPrank(msg.sender);
         createRayFiUsers.createRayFiUsers(address(rayFi));
-        vm.stopPrank();
-
-        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
-        vm.startPrank(msg.sender);
-        addMockRayFiVaults.addMockRayFiVaults(
+        new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 
@@ -252,10 +242,7 @@ new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
 new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-
-        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
-        vm.startPrank(msg.sender);
-        addMockRayFiVaults.addMockRayFiVaults(
+new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 
@@ -297,10 +284,7 @@ new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
 new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-
-        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
-        vm.startPrank(msg.sender);
-        addMockRayFiVaults.addMockRayFiVaults(
+new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 
@@ -352,10 +336,7 @@ new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(
         FundRayFi fundRayFi = new FundRayFi();
         fundRayFi.fundRayFi(address(rayFi));
 new CreateRayFiLiquidityPool().createRayFiLiquidityPool(address(rayFi), address(rewardToken), address(router));
-
-        AddMockRayFiVaults addMockRayFiVaults = new AddMockRayFiVaults();
-        vm.startPrank(msg.sender);
-        addMockRayFiVaults.addMockRayFiVaults(
+new AddMockRayFiVaults().addMockRayFiVaults(
             address(rayFi), address(rewardToken), address(btcb), address(eth), address(bnb), address(router)
         );
 

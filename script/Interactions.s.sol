@@ -156,12 +156,21 @@ contract PartiallyStakeRayFiUsersSingleVault is Script {
 }
 
 contract AddMockRayFiVaults is Script {
-    uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
-    uint256 constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
-    uint256 constant USDT_LIQUIDITY = 1_000_000 ether;
+        uint256 constant USDT_LIQUIDITY = 1_000_000 ether;
     uint256 constant BTCB_LIQUIDITY = 100 ether;
     uint256 constant ETH_LIQUIDITY = 1_000 ether;
     uint256 constant BNB_LIQUIDITY = 10_000 ether;
+
+    modifier prankOwner(address rayFiAddress) {
+        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
+        if (!isOwner) {
+            vm.startPrank(tx.origin);
+        }
+        _;
+        if (!isOwner) {
+            vm.stopPrank();
+        }
+    }
 
     function addMockRayFiVaults(
         address rayFiAddress,
@@ -170,10 +179,9 @@ contract AddMockRayFiVaults is Script {
         address mockETH,
         address mockBNB,
         address routerAddress
-    ) public {
+    ) public prankOwner(rayFiAddress) {
         RayFi rayFi = RayFi(rayFiAddress);
-        vm.startPrank(msg.sender);
-        rayFi.addVault(mockBTCB);
+                rayFi.addVault(mockBTCB);
         rayFi.addVault(mockETH);
         rayFi.addVault(mockBNB);
 
@@ -197,8 +205,7 @@ contract AddMockRayFiVaults is Script {
                 block.timestamp
             );
         }
-        vm.stopPrank();
-    }
+            }
 
     function run() external {
         address mostRecentDeployedRayFi = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
