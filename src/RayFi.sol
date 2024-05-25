@@ -786,6 +786,21 @@ contract RayFi is ERC20, Ownable {
     function getBalanceOfAtSnapshot(address user, uint96 snapshotId) external view returns (uint256) {
         return s_balancesSnapshots[user].upperLookupRecent(snapshotId);
     }
+    
+    /**
+     * @notice Get the vault balance of a user at a specific snapshot
+     * @param vaultToken The address of the vault token
+     * @param user The address of the user
+     * @param snapshotId The id of the snapshot
+     * @return The vault balance of the user at the snapshot
+     */
+    function getVaultBalanceOfAtSnapshot(address vaultToken, address user, uint96 snapshotId)
+        external
+        view
+        returns (uint256)
+    {
+        return s_vaults[vaultToken].stakersSnapshots[user].upperLookupRecent(snapshotId);
+    }
 
     /**
      * @notice Get the total reward shares at a specific snapshot
@@ -803,6 +818,16 @@ contract RayFi is ERC20, Ownable {
      */
     function getTotalStakedSharesAtSnapshot(uint96 snapshotId) external view returns (uint256) {
         return s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
+    }
+
+    /**
+     * @notice Get the total vault shares at a specific snapshot
+     * @param vaultToken The address of the vault token
+     * @param snapshotId The id of the snapshot
+     * @return The total vault shares at the snapshot
+     */
+    function getTotalVaultSharesAtSnapshot(address vaultToken, uint96 snapshotId) external view returns (uint256) {
+        return s_vaults[vaultToken].totalVaultSharesSnapshots.upperLookupRecent(snapshotId);
     }
 
     /**

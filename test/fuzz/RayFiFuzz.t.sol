@@ -26,7 +26,7 @@ contract Fuzz is Test {
     }
 
     function testFuzz_sumsArePreservedOnTransfers(address to, uint256 value) public {
-        if (to == address(0)) {
+        if (to == address(0) || to == address(rayFi)) {
             return;
         }
 
@@ -116,7 +116,9 @@ contract Fuzz is Test {
         assertEq(rayFi.getTotalStakedShares(), value);
         assertEq(rayFi.getTotalStakedSharesAtSnapshot(0), value);
         assertEq(rayFi.getVaultBalanceOf(to, msg.sender), value);
+        assertEq(rayFi.getVaultBalanceOfAtSnapshot(to, msg.sender, 0), value);
         assertEq(rayFi.getTotalVaultShares(to), value);
+        assertEq(rayFi.getTotalVaultSharesAtSnapshot(to, 0), value);
 
         vm.prank(msg.sender);
         rayFi.unstake(to, value);
@@ -136,7 +138,9 @@ contract Fuzz is Test {
         assertEq(rayFi.getTotalStakedShares(), 0);
         assertEq(rayFi.getTotalStakedSharesAtSnapshot(0), 0);
         assertEq(rayFi.getVaultBalanceOf(to, msg.sender), 0);
+        assertEq(rayFi.getVaultBalanceOfAtSnapshot(to, msg.sender, 0), 0);
         assertEq(rayFi.getTotalVaultShares(to), 0);
+        assertEq(rayFi.getTotalVaultSharesAtSnapshot(to, 0), 0);
     }
 
     function testFuzz_cannotTransferMoreThanOwned(uint256 value) public {
