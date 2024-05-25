@@ -8,7 +8,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {DeployRayFi} from "../../script/DeployRayFi.s.sol";
-import {DeployMockVaults} from "../../script/DeployMockVaults.s.sol";
+import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {
     FundRayFi,
     CreateRayFiLiquidityPool,
@@ -24,6 +24,7 @@ contract InteractionsTest is Test {
     RayFi rayFi;
     ERC20Mock rewardToken;
     IUniswapV2Router02 router;
+HelperConfig helperConfig;
     ERC20Mock btcb;
     ERC20Mock eth;
     ERC20Mock bnb;
@@ -41,11 +42,11 @@ contract InteractionsTest is Test {
     uint8 constant ACCEPTED_PRECISION_LOSS = 100;
 
     function setUp() public {
-        DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi, rewardToken, router) = deployRayFi.run();
+        (rayFi, rewardToken, router, helperConfig) = new DeployRayFi().run();
+vm.prank(msg.sender);
+        rayFi.setIsExcludedFromRewards(msg.sender, true);
 
-        DeployMockVaults deployMockVaults = new DeployMockVaults();
-        (address btcbAddress, address ethAddress, address bnbAddress) = deployMockVaults.run();
+        (,,,, address btcbAddress, address ethAddress, address bnbAddress) = helperConfig.activeNetworkConfig();
         btcb = ERC20Mock(btcbAddress);
         eth = ERC20Mock(ethAddress);
         bnb = ERC20Mock(bnbAddress);

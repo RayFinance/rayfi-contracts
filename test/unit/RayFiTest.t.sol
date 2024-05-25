@@ -17,6 +17,7 @@ contract RayFiTest is Test {
     RayFi rayFi;
     ERC20Mock rewardToken;
     IUniswapV2Router02 router;
+    HelperConfig helperConfig;
 
     address feeReceiver;
     address swapReceiver;
@@ -42,11 +43,8 @@ contract RayFiTest is Test {
     address[USER_COUNT] users;
 
     function setUp() external {
-        DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi, rewardToken, router) = deployRayFi.run();
-
-        HelperConfig helper = new HelperConfig();
-        (feeReceiver, swapReceiver,,,,,) = helper.activeNetworkConfig();
+        (rayFi, rewardToken, router, helperConfig) = new DeployRayFi().run();
+        (feeReceiver, swapReceiver,,,,,) = helperConfig.activeNetworkConfig();
 
         for (uint256 i; i < USER_COUNT; ++i) {
             users[i] = makeAddr(string(abi.encode("user", i)));

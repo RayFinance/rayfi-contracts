@@ -17,7 +17,7 @@ contract Fuzz is Test {
 
     function setUp() external {
         DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi,,) = deployRayFi.run();
+        (rayFi,,,) = deployRayFi.run();
 
         vm.startPrank(msg.sender);
         rayFi.setFeeAmounts(BUY_FEE, SELL_FEE);

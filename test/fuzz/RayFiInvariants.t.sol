@@ -5,7 +5,7 @@ pragma solidity ^0.8.18;
 import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {DeployRayFi} from "../../script/DeployRayFi.s.sol";
-import {DeployMockVaults} from "../../script/DeployMockVaults.s.sol";
+import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {RayFi} from "../../src/RayFi.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
@@ -16,6 +16,7 @@ contract Invariants is StdInvariant, Test {
     RayFi rayFi;
     ERC20Mock rewardToken;
     IUniswapV2Router02 router;
+    HelperConfig helperConfig;
 
     uint256 public constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
     uint256 public constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
@@ -29,10 +30,9 @@ contract Invariants is StdInvariant, Test {
 
     function setUp() external {
         DeployRayFi deployRayFi = new DeployRayFi();
-        (rayFi, rewardToken, router) = deployRayFi.run();
+        (rayFi, rewardToken, router, helperConfig) = deployRayFi.run();
 
-        DeployMockVaults deployMockVaults = new DeployMockVaults();
-        (address btcb, address eth, address bnb) = deployMockVaults.run();
+        (,,,, address btcb, address eth, address bnb) = helperConfig.activeNetworkConfig();
 
         rewardToken.mint(msg.sender, INITIAL_REWARD_LIQUIDITY);
 
