@@ -50,3 +50,12 @@ deploy:
 
 create-pair:
 	@forge script script/Interactions.s.sol:CreateRayFiLiquidityPool $(NETWORK_ARGS)
+
+fund:
+	@forge script script/Interactions.s.sol:FundRayFi $(NETWORK_ARGS)
+
+distribute-stateless:
+	@forge script script/Interactions.s.sol:DistributeRewardsStateless $(NETWORK_ARGS)
+
+distribute-stateful:
+	@forge script script/Interactions.s.sol:DistributeRewardsStateful $(NETWORK_ARGS)

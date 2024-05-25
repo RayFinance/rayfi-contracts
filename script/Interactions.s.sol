@@ -294,3 +294,69 @@ contract PartiallyStakeRayFiUsersMultipleVaults is Script {
     // Excludes contract from coverage report
     function test() public {}
 }
+
+contract DistributeRewardsStateless is Script {
+
+    modifier prankOwner(address rayFiAddress) {
+        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
+        if (!isOwner) {
+            vm.startPrank(tx.origin);
+        }
+        _;
+        if (!isOwner) {
+            vm.stopPrank();
+        }
+    }
+
+    function distributeRewardsStateless(address rayFiAddress) public prankOwner(rayFiAddress) {
+        RayFi rayFi = RayFi(rayFiAddress);
+        rayFi.snapshot();
+        rayFi.distributeRewardsStateless(0);
+    }
+
+    function run() external {
+        address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        vm.startBroadcast();
+        distributeRewardsStateless(mostRecentDeployed);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}
+
+contract DistributeRewardsStateful is Script {
+    uint256 constant MAX_ITERATIONS = 10;
+    uint32 constant GAS_FOR_REWARDS = 10_000_000;
+
+    modifier prankOwner(address rayFiAddress) {
+        bool isOwner = RayFi(rayFiAddress).owner() == msg.sender;
+        if (!isOwner) {
+            vm.startPrank(tx.origin);
+        }
+        _;
+        if (!isOwner) {
+            vm.stopPrank();
+        }
+    }
+
+    function distributeRewardsStateful(address rayFiAddress) public prankOwner(rayFiAddress) {
+        RayFi rayFi = RayFi(rayFiAddress);
+        rayFi.snapshot();
+        for (uint256 i; i < MAX_ITERATIONS; i++) {
+            if (rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS}(GAS_FOR_REWARDS / 2, 0, new address[](0))) {
+                break;
+            }
+        }
+    }
+
+    function run() external {
+        address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        vm.startBroadcast();
+        distributeRewardsStateful(mostRecentDeployed);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}
