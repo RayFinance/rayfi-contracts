@@ -893,19 +893,19 @@ contract RayFi is ERC20, Ownable {
             if (s_isAutomatedMarketMakerPairs[from] && !s_isFeeExempt[to]) {
                 // Buy order
                 uint8 buyFee = s_buyFee;
-                if (buyFee >= 1) {
+                if (buyFee > 0) {
                     value -= _takeFee(from, value, buyFee);
                 }
             } else if (s_isAutomatedMarketMakerPairs[to] && !s_isFeeExempt[from]) {
                 // Sell order
                 uint8 sellFee = s_sellFee;
-                if (sellFee >= 1) {
+                if (sellFee > 0) {
                     value -= _takeFee(from, value, sellFee);
                 }
             } else if (!s_isFeeExempt[from] && !s_isFeeExempt[to]) {
                 // Transfer
                 uint8 transferFee = s_buyFee + s_sellFee;
-                if (transferFee >= 1) {
+                if (transferFee > 0) {
                     value -= _takeFee(from, value, transferFee);
                 }
             }
@@ -1100,7 +1100,7 @@ contract RayFi is ERC20, Ownable {
         if (slippage > 0) {
             amountOutMin = amountOutMin * (100 - slippage) / 100;
         }
-        router.swapExactTokensForTokens(amountIn, amountOutMin, path, to, block.timestamp);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, to, block.timestamp);
     }
 
     /**
