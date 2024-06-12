@@ -898,11 +898,6 @@ contract RayFiTest is Test {
         assert(rayFi.getStakedBalanceOf(msg.sender) >= TRANSFER_AMOUNT + amountOut - ACCEPTED_PRECISION_LOSS);
     }
 
-    function testOnlyOwnerCanStartDistribution() public {
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        rayFi.distributeRewardsStateless(0);
-    }
-
     function testEmptyVaultsDoNotBreakDistribution() public liquidityAdded {
         rewardToken.mint(msg.sender, TRANSFER_AMOUNT);
         vm.startPrank(msg.sender);
@@ -918,6 +913,33 @@ contract RayFiTest is Test {
 
         uint256 amountOut = router.getAmountOut(TRANSFER_AMOUNT, INITIAL_REWARD_LIQUIDITY, INITIAL_RAYFI_LIQUIDITY);
         assert(rayFi.getStakedBalanceOf(msg.sender) >= TRANSFER_AMOUNT + amountOut - ACCEPTED_PRECISION_LOSS);
+    }
+
+    function testOnlyOwnerCanStartDistribution() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        rayFi.distributeRewardsStateless(0);
+    }
+
+    function testDistributionRevertsIfCalledWithoutUpdatingSnapshots() public {
+        vm.startPrank(msg.sender);
+        rayFi.snapshot();
+        rayFi.distributeRewardsStateless(0);
+
+        vm.expectRevert(RayFi.RayFi__DistributionAlreadyProcessed.selector);
+        rayFi.distributeRewardsStateless(0);
+
+        vm.expectRevert(RayFi.RayFi__DistributionAlreadyProcessed.selector);
+        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0));
+
+        rayFi.snapshot();
+        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0));
+
+        vm.expectRevert(RayFi.RayFi__DistributionAlreadyProcessed.selector);
+        rayFi.distributeRewardsStateless(0);
+
+        vm.expectRevert(RayFi.RayFi__DistributionAlreadyProcessed.selector);
+        rayFi.distributeRewardsStateful{gas: GAS_FOR_REWARDS * 2}(GAS_FOR_REWARDS, 0, new address[](0));
+        vm.stopPrank();
     }
 
     ////////////////////

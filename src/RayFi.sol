@@ -93,6 +93,7 @@ contract RayFi is ERC20, Ownable {
     uint8 private constant MAX_FEES = 10;
 
     uint256 private s_magnifiedRewardPerShare;
+    uint256 private s_nextSnapshotIdToProcess;
     uint256 private s_lastProcessedIndex;
     uint160 private s_minimumTokenBalanceForRewards;
     uint96 private s_snapshotId;
@@ -288,6 +289,11 @@ contract RayFi is ERC20, Ownable {
     error RayFi__FeesTooHigh(uint256 totalFees);
 
     /**
+     * @dev Triggered when trying to distribute rewards using the same snapshot more than once
+     */
+    error RayFi__DistributionAlreadyProcessed();
+
+    /**
      * @dev Triggered when trying to alter the state of the distribution while it is already in progress
      */
     error RayFi__DistributionInProgress();
@@ -391,12 +397,14 @@ contract RayFi is ERC20, Ownable {
      * @param maxSwapSlippage The maximum acceptable percentage slippage for the reinvestment swaps
      */
     function distributeRewardsStateless(uint8 maxSwapSlippage) external onlyOwner {
-        if (s_distributionState != DistributionState.Inactive) {
+        uint96 snapshotId = s_snapshotId - 1;
+        if (snapshotId < s_nextSnapshotIdToProcess) {
+            revert RayFi__DistributionAlreadyProcessed();
+        } else if (s_distributionState != DistributionState.Inactive) {
             revert RayFi__DistributionInProgress();
         }
 
         address rewardToken = s_rewardToken;
-        uint96 snapshotId = s_snapshotId - 1;
         uint256 totalUnclaimedRewards = ERC20(rewardToken).balanceOf(address(this));
         uint256 totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
         uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
@@ -418,6 +426,8 @@ contract RayFi is ERC20, Ownable {
                 _processRewards(magnifiedRewardPerShare, rewardToken, snapshotId, false, 0);
             }
         }
+
+        s_nextSnapshotIdToProcess = snapshotId + 1;
     }
 
     /**
@@ -437,6 +447,10 @@ contract RayFi is ERC20, Ownable {
         returns (bool isComplete)
     {
         uint96 snapshotId = s_snapshotId - 1;
+        if (snapshotId < s_nextSnapshotIdToProcess) {
+            revert RayFi__DistributionAlreadyProcessed();
+        }
+
         address rewardToken = s_rewardToken;
         uint256 totalRewardShares = s_totalRewardSharesSnapshots.upperLookupRecent(snapshotId);
         uint256 totalStakedShares = s_totalStakedSharesSnapshots.upperLookupRecent(snapshotId);
@@ -482,6 +496,7 @@ contract RayFi is ERC20, Ownable {
 
         if (isComplete) {
             s_magnifiedRewardPerShare = 0;
+            s_nextSnapshotIdToProcess = snapshotId + 1;
             s_distributionState = DistributionState.Inactive;
         }
     }
@@ -1105,7 +1120,7 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
-          * @param magnifiedRewardPerShare The magnified reward amount per share
+     * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param rewardToken The address of the reward token
      * @param snapshotId The id of the snapshot to use
      * @param isStateful Whether to save the state of the distribution
@@ -1119,13 +1134,13 @@ contract RayFi is ERC20, Ownable {
         uint32 gasForRewards
     ) private returns (bool isComplete) {
         address[] memory shareholders = s_shareholders.keys();
-                uint256 earnedRewards;
+        uint256 earnedRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
             uint256 lastProcessedIndex = s_lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
-                                address user = shareholders[lastProcessedIndex];
+                address user = shareholders[lastProcessedIndex];
                 earnedRewards += _processRewardOfUser(user, snapshotId, magnifiedRewardPerShare, rewardToken);
 
                 ++lastProcessedIndex;
@@ -1140,7 +1155,7 @@ contract RayFi is ERC20, Ownable {
             s_lastProcessedIndex = lastProcessedIndex;
         } else {
             for (uint256 i; i < shareholders.length; ++i) {
-                                address user = shareholders[i];
+                address user = shareholders[i];
                 earnedRewards += _processRewardOfUser(user, snapshotId, magnifiedRewardPerShare, rewardToken);
             }
             isComplete = true;
@@ -1213,7 +1228,7 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Low-level function to process rewards for a specific vault in either stateful or stateless mode
-          * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
+     * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
      * @param vaultToken The address of the vault token
      * @param snapshotId The id of the snapshot to use
      * @param gasForRewards The amount of gas to use for processing rewards
@@ -1230,13 +1245,13 @@ contract RayFi is ERC20, Ownable {
     ) private returns (bool isComplete) {
         Vault storage vault = s_vaults[vaultToken];
         address[] memory shareholders = vault.stakers.keys();
-                uint256 vaultRewards;
+        uint256 vaultRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
             uint256 lastProcessedIndex = vault.lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
-                                vaultRewards += _processVaultOfUser(
+                vaultRewards += _processVaultOfUser(
                     shareholders[lastProcessedIndex],
                     snapshotId,
                     magnifiedVaultRewardsPerShare,
@@ -1259,7 +1274,7 @@ contract RayFi is ERC20, Ownable {
             vault.lastProcessedIndex = lastProcessedIndex;
         } else {
             for (uint256 i; i < shareholders.length; ++i) {
-                                vaultRewards += _processVaultOfUser(
+                vaultRewards += _processVaultOfUser(
                     shareholders[i], snapshotId, magnifiedVaultRewardsPerShare, vaultToken, isVaultTokenRayFi, vault
                 );
             }

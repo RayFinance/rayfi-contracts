@@ -96,7 +96,7 @@ contract CreateRayFiLiquidityPool is Script {
 
 contract CreateRayFiUsers is Script {
     uint256 constant USER_COUNT = 100;
-    uint256 constant USER_BALANCE = 10_000 ether;
+    uint256 constant USER_BALANCE = 1_000 ether;
 
     modifier prankOwner(address rayFiAddress, bool isPrank) {
         if (isPrank) {
@@ -111,7 +111,7 @@ contract CreateRayFiUsers is Script {
     function createRayFiUsers(address rayFiAddress, bool isPrank) public prankOwner(rayFiAddress, isPrank) {
         RayFi rayFi = RayFi(rayFiAddress);
         address[100] memory users;
-        for (uint256 i = 0; i < USER_COUNT; i++) {
+        for (uint256 i; i < USER_COUNT; i++) {
             users[i] = address(uint160(uint256(keccak256(abi.encodePacked(i + 1)))));
             rayFi.transfer(users[i], USER_BALANCE);
         }
