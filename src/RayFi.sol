@@ -509,7 +509,6 @@ contract RayFi is ERC20, Ownable {
     /**
      * @notice This function allows the owner to remove a vault from the RayFi protocol
      * @dev We have to ensure the vault is fully reset to prevent any leftover state affecting future distributions
-     * @custom:auditor It has to be evaluated whether this approach is sustainable in the long term
      * @param vaultToken The key of the vault to remove
      */
     function removeVault(address vaultToken) external onlyOwner {
@@ -1079,7 +1078,6 @@ contract RayFi is ERC20, Ownable {
     /**
      * @dev Low-level function to execute a swap with the given slippage using a UniswapV2-compatible router
      * Assumes that the tokens have already been approved for spending
-     * @custom:auditor This function should be reviewed for potential vulnerabilities due to price manipulation
      * @param router The address of the UniswapV2-compatible router
      * @param tokenIn The address of the token to swap from
      * @param tokenOut The address of the token to swap to
@@ -1107,8 +1105,7 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Low-level function to process rewards for all token holders in either stateful or stateless mode
-     * @custom:auditor To check whether loading the shareholder array in memory is sustainable
-     * @param magnifiedRewardPerShare The magnified reward amount per share
+          * @param magnifiedRewardPerShare The magnified reward amount per share
      * @param rewardToken The address of the reward token
      * @param snapshotId The id of the snapshot to use
      * @param isStateful Whether to save the state of the distribution
@@ -1122,15 +1119,13 @@ contract RayFi is ERC20, Ownable {
         uint32 gasForRewards
     ) private returns (bool isComplete) {
         address[] memory shareholders = s_shareholders.keys();
-        // uint256 shareholderCount = shareholders.length;
-        uint256 earnedRewards;
+                uint256 earnedRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
             uint256 lastProcessedIndex = s_lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
-                // (address user,) = s_shareholders.at(lastProcessedIndex);
-                address user = shareholders[lastProcessedIndex];
+                                address user = shareholders[lastProcessedIndex];
                 earnedRewards += _processRewardOfUser(user, snapshotId, magnifiedRewardPerShare, rewardToken);
 
                 ++lastProcessedIndex;
@@ -1145,8 +1140,7 @@ contract RayFi is ERC20, Ownable {
             s_lastProcessedIndex = lastProcessedIndex;
         } else {
             for (uint256 i; i < shareholders.length; ++i) {
-                // (address user,) = s_shareholders.at(i);
-                address user = shareholders[i];
+                                address user = shareholders[i];
                 earnedRewards += _processRewardOfUser(user, snapshotId, magnifiedRewardPerShare, rewardToken);
             }
             isComplete = true;
@@ -1219,8 +1213,7 @@ contract RayFi is ERC20, Ownable {
 
     /**
      * @dev Low-level function to process rewards for a specific vault in either stateful or stateless mode
-     * @custom:auditor To check whether loading the shareholder array in memory is sustainable
-     * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
+          * @param magnifiedVaultRewardsPerShare The magnified reward amount per share
      * @param vaultToken The address of the vault token
      * @param snapshotId The id of the snapshot to use
      * @param gasForRewards The amount of gas to use for processing rewards
@@ -1237,15 +1230,13 @@ contract RayFi is ERC20, Ownable {
     ) private returns (bool isComplete) {
         Vault storage vault = s_vaults[vaultToken];
         address[] memory shareholders = vault.stakers.keys();
-        // uint256 shareholderCount = shareholders.length;
-        uint256 vaultRewards;
+                uint256 vaultRewards;
         if (isStateful) {
             uint256 startingGas = gasleft();
             uint256 lastProcessedIndex = vault.lastProcessedIndex;
             uint256 gasUsed;
             while (gasUsed < gasForRewards) {
-                // (address user,) = vault.stakers.at(lastProcessedIndex);
-                vaultRewards += _processVaultOfUser(
+                                vaultRewards += _processVaultOfUser(
                     shareholders[lastProcessedIndex],
                     snapshotId,
                     magnifiedVaultRewardsPerShare,
@@ -1268,8 +1259,7 @@ contract RayFi is ERC20, Ownable {
             vault.lastProcessedIndex = lastProcessedIndex;
         } else {
             for (uint256 i; i < shareholders.length; ++i) {
-                // (address user,) = vault.stakers.at(i);
-                vaultRewards += _processVaultOfUser(
+                                vaultRewards += _processVaultOfUser(
                     shareholders[i], snapshotId, magnifiedVaultRewardsPerShare, vaultToken, isVaultTokenRayFi, vault
                 );
             }
