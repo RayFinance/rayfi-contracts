@@ -98,6 +98,16 @@ contract Invariants is StdInvariant, Test {
         assert(totalRewardShares >= totalStakedShares);
     }
 
+    function invariant_individualStakedBalancesShouldAddUpToTotalStakedShares() public view {
+        uint256 totalStakedShares = rayFi.getTotalStakedShares();
+        address[] memory shareholders = rayFi.getShareholders();
+        uint256 totalStakedSharesFromIndividuals;
+        for (uint256 i; i < shareholders.length; i++) {
+            totalStakedSharesFromIndividuals += rayFi.getStakedBalanceOf(shareholders[i]);
+        }
+        assertEq(totalStakedShares, totalStakedSharesFromIndividuals);
+    }
+
     function invariant_gettersShouldNotRevert() public view {
         rayFi.getShareholders();
         rayFi.getSharesBalanceOf(msg.sender);
