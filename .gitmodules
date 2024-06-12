@@ -16,3 +16,6 @@
 [submodule "lib/foundry-devops"]
 	path = lib/foundry-devops
 	url = https://github.com/Cyfrin/foundry-devops
+[submodule "lib/gaslitedrop"]
+	path = lib/gaslitedrop
+	url = https://github.com/poppunkllc/gaslitedrop
