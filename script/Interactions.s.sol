@@ -49,7 +49,9 @@ contract CreateRayFiLiquidityPool is Script {
         prankOwner(rayFiAddress, isPrank)
     {
         RayFi rayFi = RayFi(rayFiAddress);
-        ERC20Mock(rewardToken).mint(rayFi.owner(), INITIAL_REWARD_LIQUIDITY);
+        if (block.chainid == 31337) {
+            ERC20Mock(rewardToken).mint(rayFi.owner(), INITIAL_REWARD_LIQUIDITY);
+        }
 
         rayFi.approve(router, INITIAL_RAYFI_LIQUIDITY);
         ERC20Mock(rewardToken).approve(router, INITIAL_REWARD_LIQUIDITY);
@@ -80,7 +82,7 @@ contract CreateRayFiLiquidityPool is Script {
             (,, mostRecentDeployedRewardToken, mostRecentDeployedRouter,,,) = helperConfig.activeNetworkConfig();
         } else {
             mostRecentDeployedRewardToken = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
-            mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+            mostRecentDeployedRouter = 0x0165878A594ca255338adfa4d48449f69242Eb8F;
         }
 
         vm.startBroadcast();
@@ -245,7 +247,7 @@ contract AddMockRayFiVaults is Script {
             ) = helperConfig.activeNetworkConfig();
         } else {
             mostRecentDeployedMockUSDT = DevOpsTools.get_most_recent_deployment("MockUSDT", block.chainid);
-            mostRecentDeployedRouter = DevOpsTools.get_most_recent_deployment("UniswapV2Router02", block.chainid);
+            mostRecentDeployedRouter = 0x0165878A594ca255338adfa4d48449f69242Eb8F;
             mostRecentDeployedMockBTCB = DevOpsTools.get_most_recent_deployment("MockBTCB", block.chainid);
             mostRecentDeployedMockETH = DevOpsTools.get_most_recent_deployment("MockETH", block.chainid);
             mostRecentDeployedMockBNB = DevOpsTools.get_most_recent_deployment("MockBNB", block.chainid);
