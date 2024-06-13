@@ -66,3 +66,6 @@ distribute-stateless:
 
 distribute-stateful:
 	@forge script script/Interactions.s.sol:DistributeRewardsStateful $(NETWORK_ARGS)
+
+airdrop:
+	@forge script script/AirdropRayFi.s.sol:AirdropRayFi $(NETWORK_ARGS)
