@@ -1037,6 +1037,27 @@ contract RayFiTest is Test {
         rayFi.setRewardToken(newRewardToken);
     }
 
+    function testSetIsAutomatedMarketPair() public {
+        // Test valid call
+        vm.startPrank(msg.sender);
+        vm.recordLogs();
+        address newAutomatedMarketPair = address(DUMMY_ADDRESS);
+        rayFi.setIsAutomatedMarketPair(newAutomatedMarketPair, true);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        assertEq(entries[0].topics[0], keccak256("AutomatedMarketPairUpdated(address,bool)"));
+        assertEq(entries[0].topics[1], bytes32(uint256(uint160(newAutomatedMarketPair))));
+        assertEq(entries[0].topics[2], bytes32(uint256(1)));
+
+        // Revert when zero address is passed as input
+        vm.expectRevert(RayFi.RayFi__CannotSetToZeroAddress.selector);
+        rayFi.setIsAutomatedMarketPair(address(0), true);
+        vm.stopPrank();
+
+        // Revert when called by non-owner
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        rayFi.setIsAutomatedMarketPair(newAutomatedMarketPair, true);
+    }
+
     function testSetRouter() public {
         // Test valid call
         vm.startPrank(msg.sender);
