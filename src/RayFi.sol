@@ -90,6 +90,7 @@ contract RayFi is ERC20, Ownable {
 
     uint128 private constant MAGNITUDE = type(uint128).max;
     uint128 private constant MAX_SUPPLY = 10_000_000 ether;
+    uint128 private constant MAX_TOKEN_REQUIREMENT_FOR_REWARDS = 100_000 ether;
     uint8 private constant MAX_FEES = 10;
 
     uint256 private s_magnifiedRewardPerShare;
@@ -281,6 +282,12 @@ contract RayFi is ERC20, Ownable {
      * This is a security measure to prevent malicious retrieval of RayFi tokens
      */
     error RayFi__CannotRetrieveRayFi();
+
+    /**
+     * @dev Indicates a failure in setting the minimum token balance for rewards due to the amount being too high
+     * @param newMinimumTokenBalanceForRewards The new minimum token balance that was attempted to be set
+     */
+    error RayFi__MinimumTokenBalanceForRewardsTooHigh(uint160 newMinimumTokenBalanceForRewards);
 
     /**
      * @dev Indicates a failure in setting new fees due to the total fees being too high
@@ -626,6 +633,9 @@ contract RayFi is ERC20, Ownable {
      * @param newMinimum The new minimum token balance for rewards
      */
     function setMinimumTokenBalanceForRewards(uint160 newMinimum) external onlyOwner {
+        if (newMinimum > MAX_TOKEN_REQUIREMENT_FOR_REWARDS) {
+            revert RayFi__MinimumTokenBalanceForRewardsTooHigh(newMinimum);
+        }
         uint160 oldMinimum = s_minimumTokenBalanceForRewards;
         s_minimumTokenBalanceForRewards = newMinimum;
         emit MinimumTokenBalanceForRewardsUpdated(newMinimum, oldMinimum);

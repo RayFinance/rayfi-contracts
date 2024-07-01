@@ -981,6 +981,10 @@ contract RayFiTest is Test {
         assertEq(entries[0].topics[1], bytes32(uint256(MINIMUM_TOKEN_BALANCE_FOR_REWARDS)));
         assertEq(entries[0].topics[2], bytes32(0));
         assertEq(rayFi.getMinimumTokenBalanceForRewards(), MINIMUM_TOKEN_BALANCE_FOR_REWARDS);
+
+        // Revert when the token requirement for rewards is too high
+        vm.expectRevert(abi.encodeWithSelector(RayFi.RayFi__MinimumTokenBalanceForRewardsTooHigh.selector, MAX_SUPPLY));
+        rayFi.setMinimumTokenBalanceForRewards(uint160(MAX_SUPPLY));
         vm.stopPrank();
 
         // Revert when called by non-owner
