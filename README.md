@@ -115,11 +115,11 @@ forge coverage --report debug
 
 1. Setup environment variables
 
-You'll want to set your `OPBNB_TESTNET_RPC_URL`, `OPBNB_TESTNET_ACCOUNT` and  `PASSWORD` as environment variables by adding them to a `.env` file.
+You'll want to set your `OPBNB_TESTNET_RPC_URL`, `OPBNB_TESTNET_ACCOUNT` and  `TESTNET_PASSWORD` as environment variables by adding them to a `.env` file.
 
 - `OPBNB_TESTNET_RPC_URL`: This is the url of the opBNB Testnet node you're working with. You can get setup with one for free from [NodeReal](https://nodereal.io/invite/8ce49206-2b64-401d-9e75-648189f5cf64).
 - `OPBNB_TESTNET_ACCOUNT`: The name of the Foundry keystore to use. [Learn how to create one here](https://book.getfoundry.sh/reference/cast/cast-wallet-import).
-- `PASSWORD`: The password to the keystore. 
+- `TESTNET_PASSWORD`: The password to the keystore. 
 
 **NOTE:** FOR DEVELOPMENT, PLEASE USE A WALLET THAT DOESN'T HAVE ANY REAL FUNDS ASSOCIATED WITH IT.
 
@@ -170,19 +170,19 @@ For example, on opBNB Testnet:
 1. Transfer some tokens
 
 ```
-cast send --rpc-url $OPBNB_TESTNET_RPC_URL --gas-limit 100000 --gas-price 100000 --account $OPBNB_TESTNET_ACCOUNT --password $PASSWORD 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "transfer(address,uint256)" 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 10000000000000000000000 
+cast send --rpc-url $OPBNB_TESTNET_RPC_URL --gas-limit 100000 --gas-price 100000 --account $OPBNB_TESTNET_ACCOUNT --password $TESTNET_PASSWORD 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "transfer(address,uint256)" 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 10000000000000000000000 
 ```
 
 2. Stake the tokens
 
 ```
-cast send --rpc-url $OPBNB_TESTNET_RPC_URL --gas-limit 100000 --gas-price 100000 --account $OPBNB_TESTNET_ACCOUNT --password $PASSWORD 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "stake(address,uint256)"  0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC 10000000000000000000000
+cast send --rpc-url $OPBNB_TESTNET_RPC_URL --gas-limit 100000 --gas-price 100000 --account $OPBNB_TESTNET_ACCOUNT --password $TESTNET_PASSWORD 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "stake(address,uint256)"  0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC 10000000000000000000000
 ```
 
 3. Unstake some tokens
 
 ```
-cast send --rpc-url $OPBNB_TESTNET_RPC_URL --gas-limit 100000 --gas-price 100000 --account $OPBNB_TESTNET_ACCOUNT --password $PASSWORD 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "unstake(address,uint256)"  0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC 5000000000000000000000
+cast send --rpc-url $OPBNB_TESTNET_RPC_URL --gas-limit 100000 --gas-price 100000 --account $OPBNB_TESTNET_ACCOUNT --password $TESTNET_PASSWORD 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "unstake(address,uint256)"  0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC 5000000000000000000000
 ```
 
 The same can be done on `anvil` replacing all the above options (`--*`) with just `--unlocked --from`, where `--from` could be any of the available accounts.

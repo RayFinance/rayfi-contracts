@@ -82,4 +82,7 @@ contract StakingWallet is VestingWallet {
         }
         revert StakingWallet__VaultNotSupported(vaultToken);
     }
+
+    // Excludes contract from coverage report
+    function test() public {}
 }

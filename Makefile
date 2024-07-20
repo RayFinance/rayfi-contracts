@@ -42,7 +42,18 @@ ifeq ($(findstring --network opbnb-testnet,$(ARGS)),--network opbnb-testnet)
 	--with-gas-price 100000 \
 	--broadcast \
 	--account $(OPBNB_TESTNET_ACCOUNT) \
-	--password $(PASSWORD) \
+	--password $(TESTNET_PASSWORD) \
+	-vvvv
+endif
+
+ifeq ($(findstring --network opbnb-mainnet,$(ARGS)),--network opbnb-mainnet)
+	NETWORK_ARGS := \
+	--rpc-url $(OPBNB_MAINNET_RPC_URL) \
+	--priority-gas-price 100000 \
+	--with-gas-price 100000 \
+	--broadcast \
+	--account $(OPBNB_MAINNET_ACCOUNT) \
+	--password $(MAINNET_PASSWORD) \
 	-vvvv
 endif
 

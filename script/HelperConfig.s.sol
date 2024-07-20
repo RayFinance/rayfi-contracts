@@ -22,17 +22,33 @@ contract HelperConfig is Script {
         address router;
         address btcb;
         address eth;
-        address bnb;
+        address wbnb;
     }
 
     error HelperConfig__ChainNotImplemented();
 
     constructor() {
-        if (block.chainid == 5611) {
+        if (block.chainid == 204) {
+            activeNetworkConfig = getOpBnbMainnetConfig();
+        }
+        else if (block.chainid == 5611) {
             activeNetworkConfig = getOpBnbTestnetConfig();
         } else {
             activeNetworkConfig = getOrCreateAnvilEthConfig();
         }
+    }
+
+    function getOpBnbMainnetConfig() public pure returns (NetworkConfig memory) {
+        NetworkConfig memory opBnbConfig = NetworkConfig({
+            feeReceiver: 0x36a663CA228399C7Ce3A027C0F94fd9995307835,
+            swapReceiver: 0xC743F0f8dAD2b03f7C5c358eABaaC10e8C193D4f,
+            rewardToken: 0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3,
+            router: 0x8cFe327CEc66d1C090Dd72bd0FF11d690C33a2Eb,
+            btcb: 0x7c6b91D9Be155A6Db01f749217d76fF02A7227F2,
+            eth: 0xE7798f023fC62146e8Aa1b36Da45fb70855a77Ea,
+            wbnb: 0x4200000000000000000000000000000000000006
+        });
+        return opBnbConfig;
     }
 
     function getOpBnbTestnetConfig() public pure returns (NetworkConfig memory) {
@@ -43,7 +59,7 @@ contract HelperConfig is Script {
             router: 0x0F707e7f6E3C45536cfa13b2186B76D30BaA0108,
             btcb: 0x67E93A67160DD2aE54f8Ef840D1BFDAda72e6b16,
             eth: 0xf77EEC3c0D006DCF22C7250C196b516B71AD4039,
-            bnb: 0x881703b8A543cc2Fc24c38718F1F725B579381c4
+            wbnb: 0x881703b8A543cc2Fc24c38718F1F725B579381c4
         });
         return opBnbConfig;
     }
@@ -57,7 +73,7 @@ contract HelperConfig is Script {
         address rewardToken = address(new MockUSDT());
         address btcb = address(new MockBTCB());
         address eth = address(new MockETH());
-        address bnb = address(new MockBNB());
+        address wbnb = address(new MockBNB());
 
         address weth;
         assembly {
@@ -88,7 +104,7 @@ contract HelperConfig is Script {
             router: router,
             btcb: btcb,
             eth: eth,
-            bnb: bnb
+            wbnb: wbnb
         });
         return anvilConfig;
     }
