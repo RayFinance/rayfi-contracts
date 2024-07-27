@@ -80,3 +80,6 @@ distribute-stateful:
 
 airdrop:
 	@forge script script/AirdropRayFi.s.sol:AirdropRayFi $(NETWORK_ARGS)
+
+vest:
+	@forge script script/VestRayFi.s.sol:VestRayFi $(NETWORK_ARGS)

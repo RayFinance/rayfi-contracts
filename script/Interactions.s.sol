@@ -31,8 +31,8 @@ contract FundRayFi is Script {
 }
 
 contract CreateRayFiLiquidityPool is Script {
-    uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_858_550 ether;
-    uint256 constant INITIAL_REWARD_LIQUIDITY = 14_739 ether;
+    uint256 constant INITIAL_RAYFI_LIQUIDITY = 2_000_000 ether;
+    uint256 constant INITIAL_REWARD_LIQUIDITY = 9_000 ether;
 
     modifier prankOwner(address rayFiAddress, bool isPrank) {
         if (isPrank) {

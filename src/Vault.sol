@@ -11,12 +11,9 @@ import {ERC4626, ERC20} from "@openzeppelin/contracts/token/ERC20/extensions/ERC
  */
 contract Vault is ERC4626 {
     /**
-     * @param rayFi RayFi contract address
+     * @param asset Vault underlying asset
      * @param name Vault name
      * @param symbol Vault symbol
      */
-    constructor(address rayFi, string memory name, string memory symbol) ERC4626(ERC20(rayFi)) ERC20(name, symbol) {}
-
-    // Excludes contract from coverage report
-    function test() public {}
+    constructor(address asset, string memory name, string memory symbol) ERC4626(ERC20(asset)) ERC20(name, symbol) {}
 }

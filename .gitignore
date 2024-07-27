@@ -16,3 +16,4 @@ docs/
 broadcast/
 lib/
 .vscode/
+.gitmodules
