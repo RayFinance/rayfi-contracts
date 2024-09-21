@@ -332,15 +332,34 @@ contract PartiallyStakeRayFiUsersMultipleVaults is Script {
     function test() public {}
 }
 
+contract Snapshot is Script {
+    function snapshot(address rayFiAddress) public {
+        RayFi rayFi = RayFi(rayFiAddress);
+        rayFi.snapshot();
+    }
+
+    function run() external {
+        // address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        address mostRecentDeployed = 0xA9c72Fed4327418CeEA0b8611779b48F3Ca03D8b;
+        vm.startBroadcast();
+        snapshot(mostRecentDeployed);
+        vm.stopBroadcast();
+    }
+
+    // Excludes contract from coverage report
+    function test() public {}
+}
+
 contract DistributeRewardsStateless is Script {
     function distributeRewardsStateless(address rayFiAddress) public {
         RayFi rayFi = RayFi(rayFiAddress);
-        rayFi.snapshot();
+        // rayFi.snapshot();
         rayFi.distributeRewardsStateless(0);
     }
 
     function run() external {
-        address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        // address mostRecentDeployed = DevOpsTools.get_most_recent_deployment("RayFi", block.chainid);
+        address mostRecentDeployed = 0xA9c72Fed4327418CeEA0b8611779b48F3Ca03D8b;
         vm.startBroadcast();
         distributeRewardsStateless(mostRecentDeployed);
         vm.stopBroadcast();

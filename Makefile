@@ -27,7 +27,7 @@ test :; forge test
 
 coverage :; forge coverage --report debug > coverage-report.txt
 
-snapshot :; forge snapshot
+gas-snapshot :; forge snapshot
 
 format :; forge fmt
 
@@ -71,6 +71,9 @@ create-vaults:
 
 fund:
 	@forge script script/Interactions.s.sol:FundRayFi $(NETWORK_ARGS)
+
+snapshot:
+	@forge script script/Interactions.s.sol:Snapshot $(NETWORK_ARGS)
 
 distribute-stateless:
 	@forge script script/Interactions.s.sol:DistributeRewardsStateless $(NETWORK_ARGS)
