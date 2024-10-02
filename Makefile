@@ -57,6 +57,15 @@ ifeq ($(findstring --network opbnb-mainnet,$(ARGS)),--network opbnb-mainnet)
 	-vvvv
 endif
 
+ifeq ($(findstring --network bnb-mainnet,$(ARGS)),--network bnb-mainnet)
+	NETWORK_ARGS := \
+	--rpc-url $(BNB_MAINNET_RPC_URL) \
+	--broadcast \
+	--account $(OPBNB_MAINNET_ACCOUNT) \
+	--password $(MAINNET_PASSWORD) \
+	-vvvv
+endif
+
 deploy:
 	@forge script script/DeployRayFi.s.sol:DeployRayFi $(NETWORK_ARGS)
 
@@ -86,3 +95,6 @@ airdrop:
 
 vest:
 	@forge script script/VestRayFi.s.sol:VestRayFi $(NETWORK_ARGS)
+
+multi-send:
+	@forge script script/MultiSend.s.sol:MultiSend $(NETWORK_ARGS)
